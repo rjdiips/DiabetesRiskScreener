@@ -1,0 +1,294 @@
+{
+  "generated_at": "2026-10-24T09:05:00.753466+00:00",
+  "recode": "PR",
+  "target_definition": "glucose > 140 OR diagnosed == 1 OR medication == 1",
+  "fact_sheet_target_definition": "glucose > 140 OR medication == 1",
+  "rows": 1808013,
+  "columns": 56,
+  "overall": {
+    "rows": 1808013,
+    "positive": 253421,
+    "prevalence": 0.140165
+  },
+  "age_15_49": {
+    "rows": 1291831,
+    "positive": 113041,
+    "prevalence": 0.087504
+  },
+  "age_50_plus": {
+    "rows": 516182,
+    "positive": 140380,
+    "prevalence": 0.271958
+  },
+  "by_sex": {
+    "female": {
+      "rows": 962219,
+      "positive": 126179,
+      "prevalence": 0.131133
+    },
+    "male": {
+      "rows": 845794,
+      "positive": 127242,
+      "prevalence": 0.150441
+    }
+  },
+  "target_components": {
+    "glucose_gt_140": 218818,
+    "diagnosed": 68576,
+    "medication": 51625,
+    "target_union": 253421,
+    "target_fact_sheet": 237235,
+    "target_fact_sheet_known": 1807911,
+    "prevalence_union": 0.140165,
+    "prevalence_fact_sheet": 0.131221
+  },
+  "weighted_prevalence": {
+    "target": 0.153932,
+    "target_fact_sheet": 0.144814,
+    "by_sex": {
+      "female": 0.145009,
+      "male": 0.16422
+    }
+  },
+  "blood_pressure": {
+    "valid_rows": 1805697,
+    "valid_rate": 0.998719,
+    "missing_rows": 2316,
+    "age_15_49": 1290219,
+    "age_50_plus": 515478,
+    "positive_rows": 253091,
+    "positive_age_15_49": 112898,
+    "positive_age_50_plus": 140193,
+    "readings": {
+      "0": 2316,
+      "1": 59327,
+      "2": 75756,
+      "3": 1670614
+    },
+    "high_rate": 0.202608,
+    "medication_known": 1805586,
+    "medication_positive": 101706
+  },
+  "survey_design": {
+    "clusters": 30125,
+    "households": 614792,
+    "psus": 30125,
+    "strata": 2710,
+    "states": 36
+  },
+  "cooking_fuel": {
+    "clean": 943827,
+    "not_clean": 861143,
+    "missing": 3043,
+    "clean_rate": 0.522905
+  },
+  "missingness": {
+    "state": {
+      "missing": 0,
+      "missing_rate": 0.0
+    },
+    "education": {
+      "missing": 879,
+      "missing_rate": 0.000486
+    },
+    "religion": {
+      "missing": 0,
+      "missing_rate": 0.0
+    },
+    "social_group": {
+      "missing": 88157,
+      "missing_rate": 0.048759
+    },
+    "height_cm": {
+      "missing": 1014690,
+      "missing_rate": 0.561218
+    },
+    "weight_kg": {
+      "missing": 1014543,
+      "missing_rate": 0.561137
+    },
+    "bmi": {
+      "missing": 1015527,
+      "missing_rate": 0.561681
+    },
+    "waist_cm": {
+      "missing": 1015212,
+      "missing_rate": 0.561507
+    },
+    "hip_cm": {
+      "missing": 1015199,
+      "missing_rate": 0.5615
+    },
+    "waist_hip_ratio": {
+      "missing": 1017202,
+      "missing_rate": 0.562608
+    },
+    "systolic_mean": {
+      "missing": 2316,
+      "missing_rate": 0.001281
+    },
+    "diastolic_mean": {
+      "missing": 2316,
+      "missing_rate": 0.001281
+    },
+    "bp_medication": {
+      "missing": 2427,
+      "missing_rate": 0.001342
+    },
+    "tobacco_any": {
+      "missing": 1477,
+      "missing_rate": 0.000817
+    },
+    "alcohol_any": {
+      "missing": 1702,
+      "missing_rate": 0.000941
+    },
+    "cooking_fuel_clean": {
+      "missing": 3043,
+      "missing_rate": 0.001683
+    },
+    "target_fact_sheet": {
+      "missing": 102,
+      "missing_rate": 5.6e-05
+    }
+  },
+  "harmonised_columns": [
+    "case_id",
+    "recode",
+    "sex",
+    "female",
+    "cluster",
+    "household",
+    "line",
+    "psu",
+    "strata",
+    "weight",
+    "weight_scaled",
+    "age",
+    "age_15_49",
+    "state",
+    "residence",
+    "urban",
+    "wealth",
+    "education",
+    "religion",
+    "social_group",
+    "marital_status",
+    "children_ever_born",
+    "height_cm",
+    "weight_kg",
+    "bmi",
+    "waist_cm",
+    "hip_cm",
+    "waist_hip_ratio",
+    "systolic_mean",
+    "diastolic_mean",
+    "bp_readings",
+    "bp_high",
+    "bp_medication",
+    "ever_checked",
+    "diagnosed",
+    "medication",
+    "glucose_raw",
+    "glucose",
+    "target",
+    "target_fact_sheet",
+    "tobacco_any",
+    "smoking_any",
+    "smokeless_any",
+    "alcohol_any",
+    "alcohol_frequency",
+    "diet_milk",
+    "diet_pulses",
+    "diet_green_leafy",
+    "diet_fruit",
+    "diet_eggs",
+    "diet_fish",
+    "diet_meat",
+    "diet_fried",
+    "diet_aerated",
+    "cooking_fuel",
+    "cooking_fuel_clean"
+  ],
+  "unavailable_columns": [
+    "marital_status",
+    "children_ever_born",
+    "smoking_any",
+    "smokeless_any",
+    "alcohol_frequency",
+    "diet_milk",
+    "diet_pulses",
+    "diet_green_leafy",
+    "diet_fruit",
+    "diet_eggs",
+    "diet_fish",
+    "diet_meat",
+    "diet_fried",
+    "diet_aerated"
+  ],
+  "reconciliation": {
+    "status": "pass",
+    "checks": {
+      "rows": {
+        "expected": 1808013,
+        "observed": 1808013,
+        "pass": true
+      },
+      "positive": {
+        "expected": 253421,
+        "observed": 253421,
+        "pass": true
+      },
+      "female": {
+        "expected": 962219,
+        "observed": 962219,
+        "pass": true
+      },
+      "male": {
+        "expected": 845794,
+        "observed": 845794,
+        "pass": true
+      },
+      "age_15_49_rows": {
+        "expected": 1291831,
+        "observed": 1291831,
+        "pass": true
+      },
+      "age_50_plus_rows": {
+        "expected": 516182,
+        "observed": 516182,
+        "pass": true
+      },
+      "bp_valid_rows": {
+        "expected": 1805697,
+        "observed": 1805697,
+        "pass": true
+      },
+      "bp_valid_age_15_49": {
+        "expected": 1290219,
+        "observed": 1290219,
+        "pass": true
+      },
+      "bp_valid_age_50_plus": {
+        "expected": 515478,
+        "observed": 515478,
+        "pass": true
+      },
+      "bp_positive_rows": {
+        "expected": 253091,
+        "observed": 253091,
+        "pass": true
+      },
+      "bp_positive_age_15_49": {
+        "expected": 112898,
+        "observed": 112898,
+        "pass": true
+      },
+      "bp_positive_age_50_plus": {
+        "expected": 140193,
+        "observed": 140193,
+        "pass": true
+      }
+    }
+  }
+}

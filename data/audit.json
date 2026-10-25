@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-10-23T14:30:30.938192+00:00",
+  "target_definition": "glucose > 140 OR diagnosed == 1 OR medication == 1",
+  "glucose_valid_range": [
+    20.0,
+    600.0
+  ],
+  "age_min": 15,
+  "pr": {
+    "rows_all_members": 2843917,
+    "households_all": 636699,
+    "analysis_households": 614792,
+    "adults_15plus": {
+      "label": "PR adults 15+",
+      "rows": 1808013,
+      "positive": 253421,
+      "prevalence": 0.140165
+    },
+    "adults_15_49": {
+      "label": "PR adults 15-49",
+      "rows": 1291831,
+      "positive": 113041,
+      "prevalence": 0.087504
+    },
+    "components_15plus": {
+      "n": 1808013,
+      "glucose_gt_140": 218818,
+      "diagnosed": 68576,
+      "medication": 51625,
+      "union": 253421,
+      "fact_sheet_high_or_medication": 237250,
+      "prevalence_union": 0.140165,
+      "prevalence_fact_sheet": 0.131221
+    },
+    "weighted_fact_sheet_15plus": 0.144814,
+    "weighted_fact_sheet_by_sex": {
+      "female": 0.135266,
+      "male": 0.155823
+    }
+  },
+  "irmr": {
+    "pooled_15_54": {
+      "label": "IR + MR, women 15-49 and men 15-54",
+      "rows": 782789,
+      "positive": 66450,
+      "prevalence": 0.084889
+    },
+    "pooled_15_49": {
+      "label": "IR + MR, adults 15-49",
+      "rows": 774861,
+      "positive": 64526,
+      "prevalence": 0.083274
+    },
+    "components_15_54": {
+      "n": 782789,
+      "glucose_gt_140": 55576,
+      "diagnosed": 15078,
+      "medication": 9667,
+      "union": 66450,
+      "fact_sheet_high_or_medication": 60175,
+      "prevalence_union": 0.084889,
+      "prevalence_fact_sheet": 0.076873
+    }
+  }
+}

@@ -1,0 +1,35 @@
+# Data (do not commit NFHS-5 microdata)
+data/raw/
+data/processed/
+data/interim/
+
+# Model binaries
+artifacts/*.joblib
+artifacts/*.onnx
+artifacts/*.pkl
+artifacts/*.ubj
+artifacts/*.txt
+artifacts/**/*.joblib
+artifacts/**/*.onnx
+artifacts/**/*.pkl
+artifacts/**/*.ubj
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log

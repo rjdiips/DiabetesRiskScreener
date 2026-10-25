@@ -1,0 +1,178 @@
+{
+  "rows": 1808013,
+  "clusters": 30125,
+  "households": 614792,
+  "test": {
+    "rows": 361364,
+    "clusters": 6025,
+    "households": 122910,
+    "positives": 50556,
+    "prevalence": 0.139903,
+    "female": 192513,
+    "male": 168851,
+    "female_share": 0.53274
+  },
+  "development": {
+    "rows": 1446649,
+    "clusters": 24100,
+    "households": 491882,
+    "positives": 202865,
+    "prevalence": 0.140231,
+    "female": 769706,
+    "male": 676943,
+    "female_share": 0.532061
+  },
+  "folds": [
+    {
+      "rows": 289270,
+      "clusters": 4830,
+      "households": 98501,
+      "positives": 40922,
+      "prevalence": 0.141466,
+      "female": 153928,
+      "male": 135342,
+      "female_share": 0.532126,
+      "fold": 1
+    },
+    {
+      "rows": 289355,
+      "clusters": 4809,
+      "households": 98354,
+      "positives": 40375,
+      "prevalence": 0.139534,
+      "female": 153944,
+      "male": 135411,
+      "female_share": 0.532025,
+      "fold": 2
+    },
+    {
+      "rows": 289362,
+      "clusters": 4793,
+      "households": 97949,
+      "positives": 40269,
+      "prevalence": 0.139165,
+      "female": 154118,
+      "male": 135244,
+      "female_share": 0.532613,
+      "fold": 3
+    },
+    {
+      "rows": 289339,
+      "clusters": 4838,
+      "households": 98687,
+      "positives": 40751,
+      "prevalence": 0.140842,
+      "female": 153750,
+      "male": 135589,
+      "female_share": 0.531384,
+      "fold": 4
+    },
+    {
+      "rows": 289323,
+      "clusters": 4830,
+      "households": 98391,
+      "positives": 40548,
+      "prevalence": 0.140148,
+      "female": 153966,
+      "male": 135357,
+      "female_share": 0.53216,
+      "fold": 5
+    }
+  ],
+  "age_15_49": {
+    "rows": 1291831,
+    "clusters": 30119,
+    "households": 544793,
+    "test": {
+      "rows": 258417,
+      "clusters": 6024,
+      "households": 108785,
+      "positives": 22551,
+      "prevalence": 0.087266,
+      "female": 139714,
+      "male": 118703,
+      "female_share": 0.540653
+    },
+    "development": {
+      "rows": 1033414,
+      "clusters": 24095,
+      "households": 436008,
+      "positives": 90490,
+      "prevalence": 0.087564,
+      "female": 558351,
+      "male": 475063,
+      "female_share": 0.540297
+    },
+    "folds": [
+      {
+        "rows": 206277,
+        "clusters": 4828,
+        "households": 87239,
+        "positives": 18146,
+        "prevalence": 0.087969,
+        "female": 111519,
+        "male": 94758,
+        "female_share": 0.540627,
+        "fold": 1
+      },
+      {
+        "rows": 206682,
+        "clusters": 4809,
+        "households": 87257,
+        "positives": 18044,
+        "prevalence": 0.087303,
+        "female": 111625,
+        "male": 95057,
+        "female_share": 0.540081,
+        "fold": 2
+      },
+      {
+        "rows": 206891,
+        "clusters": 4792,
+        "households": 87092,
+        "positives": 17900,
+        "prevalence": 0.086519,
+        "female": 111956,
+        "male": 94935,
+        "female_share": 0.541135,
+        "fold": 3
+      },
+      {
+        "rows": 206748,
+        "clusters": 4838,
+        "households": 87367,
+        "positives": 18326,
+        "prevalence": 0.088639,
+        "female": 111531,
+        "male": 95217,
+        "female_share": 0.539454,
+        "fold": 4
+      },
+      {
+        "rows": 206816,
+        "clusters": 4828,
+        "households": 87053,
+        "positives": 18074,
+        "prevalence": 0.087392,
+        "female": 111720,
+        "male": 95096,
+        "female_share": 0.54019,
+        "fold": 5
+      }
+    ],
+    "missing_folds": []
+  },
+  "leakage": {
+    "cluster_single_slot": true,
+    "household_single_slot": true
+  },
+  "split_source": "pr_only",
+  "config": {
+    "seed": 42,
+    "test_fraction": 0.2,
+    "n_folds": 5,
+    "grouping": "cluster",
+    "primary_assignment_supplied": false,
+    "actual_test_fraction": 0.199868
+  }
+}
