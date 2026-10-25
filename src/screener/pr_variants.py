@@ -8,15 +8,13 @@ report. Running the variants is the caller's job.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
-from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from .pipeline import TrainingResult
 from .pr_model import PR_AUDIT_FEATURE_VARIANTS, PR_AUDIT_SUBGROUP_NAMES
+from .reporting import format_delta, format_value, plain
 
 MANDATORY_SUBGROUPS = ("sex", "age_band")
 
@@ -78,21 +76,6 @@ VARIANT_MESSAGES = (
 )
 
 
-def _plain(value: Any) -> Any:
-    """Convert numpy and pandas scalars into JSON-safe Python values."""
-    if isinstance(value, dict):
-        return {str(key): _plain(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_plain(item) for item in value]
-    if isinstance(value, np.generic):
-        value = value.item()
-    if value is pd.NA or value is None:
-        return None
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    return value
-
-
 def _require_mandatory_subgroups(result: TrainingResult) -> None:
     frame = result.subgroup_metrics
     present = set() if frame.empty else set(frame["subgroup"].astype(str))
@@ -117,11 +100,11 @@ def _require_audit_subgroups(variant: str, result: TrainingResult) -> None:
 
 def _run_metrics(result: TrainingResult) -> dict:
     overall = result.metrics.get("overall", {})
-    metrics = {name: _plain(overall.get(name)) for name in COMPARISON_METRICS}
-    metrics["calibration"] = _plain(
+    metrics = {name: plain(overall.get(name)) for name in COMPARISON_METRICS}
+    metrics["calibration"] = plain(
         result.metrics.get("calibration", {}).get("selected")
     )
-    metrics["selected_family"] = _plain(
+    metrics["selected_family"] = plain(
         result.run_metadata.get("selected_model", {}).get("family")
     )
     return metrics
@@ -142,14 +125,14 @@ def _subgroup_rows(frame: pd.DataFrame, names) -> list[dict]:
     if frame.empty or "subgroup" not in frame.columns:
         return []
     rows = frame[frame["subgroup"].isin(list(names))]
-    return [_plain(row) for row in rows.to_dict("records")]
+    return [plain(row) for row in rows.to_dict("records")]
 
 
 def _audit_rows(frame: pd.DataFrame) -> list[dict]:
     if frame.empty or "audit_only" not in frame.columns:
         return []
     rows = frame[frame["audit_only"].astype(bool)]
-    return [_plain(row) for row in rows.to_dict("records")]
+    return [plain(row) for row in rows.to_dict("records")]
 
 
 def _subgroup_snapshot(result: TrainingResult) -> dict:
@@ -182,11 +165,11 @@ def _small_group_rules(result: TrainingResult) -> dict:
     rules = result.run_metadata.get("subgroup_rules")
     if rules:
         return {
-            "small_group_min_rows": _plain(rules.get("small_group_min_rows")),
-            "small_group_min_positives": _plain(
+            "small_group_min_rows": plain(rules.get("small_group_min_rows")),
+            "small_group_min_positives": plain(
                 rules.get("small_group_min_positives")
             ),
-            "state_min_test_rows": _plain(rules.get("state_min_test_rows")),
+            "state_min_test_rows": plain(rules.get("state_min_test_rows")),
         }
     return {
         "small_group_min_rows": result.config.small_group_min_rows,
@@ -241,22 +224,6 @@ def compare_pr_variants(
     return comparison
 
 
-def _format(value: Any, digits: int = 4) -> str:
-    if value is None:
-        return "n/a"
-    if isinstance(value, float):
-        return f"{value:.{digits}f}"
-    return str(value)
-
-
-def _format_delta(value: Any, digits: int = 4) -> str:
-    if value is None:
-        return "n/a"
-    if isinstance(value, float):
-        return f"{value:+.{digits}f}"
-    return str(value)
-
-
 def _variant_label(name: str) -> str:
     return VARIANT_LABELS.get(name, name)
 
@@ -291,24 +258,24 @@ def _overall_table(comparison: dict) -> list[str]:
     lines = ["".join(header), "".join(separator)]
     for label, key in rows:
         cells = [
-            f"| {label} | {_format(comparison['default']['metrics'].get(key))} |"
+            f"| {label} | {format_value(comparison['default']['metrics'].get(key))} |"
         ]
         for variant in variants.values():
-            cells.append(f" {_format(variant['metrics'].get(key))} |")
-            cells.append(f" {_format_delta(variant['deltas'].get(key))} |")
+            cells.append(f" {format_value(variant['metrics'].get(key))} |")
+            cells.append(f" {format_delta(variant['deltas'].get(key))} |")
         lines.append("".join(cells))
 
     lines.append(
-        f"| Calibration | {_format(comparison['default']['metrics'].get('calibration'))} |"
+        f"| Calibration | {format_value(comparison['default']['metrics'].get('calibration'))} |"
         + "".join(
-            f" {_format(variant['metrics'].get('calibration'))} | n/a |"
+            f" {format_value(variant['metrics'].get('calibration'))} | n/a |"
             for variant in variants.values()
         )
     )
     lines.append(
-        f"| Selected family | {_format(comparison['default']['metrics'].get('selected_family'))} |"
+        f"| Selected family | {format_value(comparison['default']['metrics'].get('selected_family'))} |"
         + "".join(
-            f" {_format(variant['metrics'].get('selected_family'))} | n/a |"
+            f" {format_value(variant['metrics'].get('selected_family'))} | n/a |"
             for variant in variants.values()
         )
     )
@@ -351,15 +318,15 @@ def _subgroup_table(comparison: dict, name: str) -> list[str]:
         for row in run["subgroups"].get(name, []):
             lines.append(
                 f"| {_variant_label(label)} | {row['group']} | {row['n']} | "
-                f"{row['positives']} | {_format(row.get('prevalence'))} | "
-                f"{_format(row.get('roc_auc'))} | {_format(row.get('pr_auc'))} | "
-                f"{_format(row.get('sensitivity'))} | "
-                f"{_format(row.get('calibration_error'))} | "
-                f"{_format(row.get('gap_prevalence'))} | "
-                f"{_format(row.get('gap_roc_auc'))} | "
-                f"{_format(row.get('gap_pr_auc'))} | "
-                f"{_format(row.get('gap_sensitivity'))} | "
-                f"{_format(row.get('gap_calibration_error'))} | "
+                f"{row['positives']} | {format_value(row.get('prevalence'))} | "
+                f"{format_value(row.get('roc_auc'))} | {format_value(row.get('pr_auc'))} | "
+                f"{format_value(row.get('sensitivity'))} | "
+                f"{format_value(row.get('calibration_error'))} | "
+                f"{format_value(row.get('gap_prevalence'))} | "
+                f"{format_value(row.get('gap_roc_auc'))} | "
+                f"{format_value(row.get('gap_pr_auc'))} | "
+                f"{format_value(row.get('gap_sensitivity'))} | "
+                f"{format_value(row.get('gap_calibration_error'))} | "
                 f"{'yes' if row.get('reliable') else 'no'} |"
             )
     return lines
@@ -386,14 +353,14 @@ def _audit_table(comparison: dict) -> list[str]:
     for label, row in rows:
         lines.append(
             f"| {_variant_label(label)} | {row['subgroup']} | {row['group']} | "
-            f"{row['n']} | {row['positives']} | {_format(row.get('roc_auc'))} | "
-            f"{_format(row.get('pr_auc'))} | {_format(row.get('sensitivity'))} | "
-            f"{_format(row.get('calibration_error'))} | "
-            f"{_format(row.get('gap_prevalence'))} | "
-            f"{_format(row.get('gap_roc_auc'))} | "
-            f"{_format(row.get('gap_pr_auc'))} | "
-            f"{_format(row.get('gap_sensitivity'))} | "
-            f"{_format(row.get('gap_calibration_error'))} | "
+            f"{row['n']} | {row['positives']} | {format_value(row.get('roc_auc'))} | "
+            f"{format_value(row.get('pr_auc'))} | {format_value(row.get('sensitivity'))} | "
+            f"{format_value(row.get('calibration_error'))} | "
+            f"{format_value(row.get('gap_prevalence'))} | "
+            f"{format_value(row.get('gap_roc_auc'))} | "
+            f"{format_value(row.get('gap_pr_auc'))} | "
+            f"{format_value(row.get('gap_sensitivity'))} | "
+            f"{format_value(row.get('gap_calibration_error'))} | "
             f"{'yes' if row.get('reliable') else 'no'} |"
         )
     return lines

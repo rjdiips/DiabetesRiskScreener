@@ -2,7 +2,7 @@
 
 A research and portfolio project that estimates the probability of elevated random blood glucose or diagnosed diabetes among Indian adults using NFHS-5 (2019-21).
 
-**Status:** data downloaded, audited, and harmonised IR/MR and PR feature tables built; shared model pipeline, PR sensitivity run, and PR subgroup/fairness variant comparison implemented.
+**Status:** data downloaded, audited, and harmonised IR/MR and PR feature tables built; shared model pipeline, PR sensitivity run, PR subgroup/fairness variant comparison, and primary-versus-PR comparison report implemented.
 
 ## What this is
 
@@ -143,6 +143,17 @@ python scripts/run_pr_variants.py --sample 15plus --variants state fairness
 ```
 
 The state variant adds `state`; the fairness variant adds `religion` and `social_group`; the combined variant adds all three; the cooking-fuel variant adds `cooking_fuel_clean`. The script writes each run's normal artifact set plus a `variant_comparison.json` and `variant_comparison.md` under `artifacts/pr/variants/`. The comparison reports each variant's feature delta and overall metric delta versus the default, with mandatory sex and age-band tables and any fairness-audit subgroups. A higher variant ROC-AUC or PR-AUC is not treated as automatic evidence that the variant is better.
+
+## Primary vs PR comparison report
+
+```powershell
+python scripts/run_pr_comparison.py `
+  --primary artifacts/primary/<run> `
+  --pr-15-49 artifacts/pr/runs/<run> `
+  --pr-15-plus artifacts/pr/runs/<run>
+```
+
+This reads the three finished run directories and writes `primary_vs_pr_comparison.json` and `primary_vs_pr_comparison.md` under `artifacts/pr/comparison/`. The report compares sample composition, feature sets, discrimination, calibration, operating thresholds, reliability curves, sex- and age-band-specific metrics, and subgroup gaps. It states that the PR 15–49 run isolates the feature-set trade-off while the PR 15+ run adds older adults, and it does not claim that one model is universally better. Raw probabilities are not compared across models because the samples and feature sets differ.
 
 ## Disclaimer
 
