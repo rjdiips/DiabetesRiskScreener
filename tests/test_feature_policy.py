@@ -7,6 +7,7 @@ from screener.feature_policy import (
     FORBIDDEN_FEATURE_COLUMNS,
     PR_15_PLUS_FEATURES,
     PR_EXCLUDED_FEATURES,
+    PR_VARIANT_NAMES,
     PRIMARY_DEFAULT_FEATURES,
     PRIMARY_FAIRNESS_FEATURES,
     PRIMARY_STATE_FEATURES,
@@ -57,6 +58,7 @@ def test_pr_default_excludes_sensitive_anthropometry_and_unavailable_concepts():
 
 
 def test_pr_feature_set_variants_add_only_the_expected_columns():
+    assert PR_VARIANT_NAMES == ("state", "fairness", "combined", "cooking_fuel")
     assert pr_feature_set("default") == PR_15_PLUS_FEATURES
     assert pr_feature_set("state") == PR_15_PLUS_FEATURES + ("state",)
     assert pr_feature_set("fairness") == PR_15_PLUS_FEATURES + (

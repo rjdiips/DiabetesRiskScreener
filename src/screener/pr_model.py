@@ -32,6 +32,11 @@ PR_15_49_AGE_LABELS = ("15-24", "25-34", "35-44", "45-49")
 
 PR_CATEGORICAL_FEATURES = ("state", "religion", "social_group")
 
+# Religion and social group are reported only by the variants that include them,
+# because the default model's audit deliberately tests the exclusion decision.
+PR_AUDIT_FEATURE_VARIANTS = ("fairness", "combined")
+PR_AUDIT_SUBGROUP_NAMES = ("religion", "social_group")
+
 PR_15_PLUS_RUN_NAME = "pr_15plus_bp"
 PR_15_49_RUN_NAME = "pr_15to49_bp"
 
@@ -63,8 +68,13 @@ _PR_15_49_ROLE = (
 )
 
 
-def _pr_subgroups(age_bins, age_labels) -> tuple[SubgroupSpec, ...]:
-    return (
+def _pr_subgroups(
+    age_bins,
+    age_labels,
+    feature_variant: str,
+    state_min_test_rows: int,
+) -> tuple[SubgroupSpec, ...]:
+    subgroups = (
         SubgroupSpec(
             name="sex",
             column="female",
@@ -83,7 +93,15 @@ def _pr_subgroups(age_bins, age_labels) -> tuple[SubgroupSpec, ...]:
             value_labels=((1, "urban"), (2, "rural")),
         ),
         SubgroupSpec(name="education", column="education"),
-        SubgroupSpec(name="state", column="state", minimum_test_rows=500),
+        SubgroupSpec(
+            name="state",
+            column="state",
+            minimum_test_rows=state_min_test_rows,
+        ),
+    )
+    if feature_variant not in PR_AUDIT_FEATURE_VARIANTS:
+        return subgroups
+    return subgroups + (
         SubgroupSpec(
             name="religion",
             column="religion",
@@ -97,6 +115,10 @@ def _pr_subgroups(age_bins, age_labels) -> tuple[SubgroupSpec, ...]:
             note=_PR_HOUSEHOLD_HEAD_NOTE,
         ),
     )
+
+
+def _variant_run_name(name: str, feature_variant: str) -> str:
+    return name if feature_variant == "default" else f"{name}_{feature_variant}"
 
 
 def _pr_config(
@@ -118,6 +140,7 @@ def _pr_config(
     model_params: dict[str, Any] | None,
     smoke_rows: int | None,
     feature_variant: str,
+    state_min_test_rows: int,
     metadata: dict | None,
 ) -> TrainingConfig:
     feature_columns = pr_feature_set(feature_variant)
@@ -135,13 +158,17 @@ def _pr_config(
         "model_role": "sensitivity",
         "sample": sample,
         "run_role": run_role,
+        "feature_variant": feature_variant,
+        "audit_subgroup_note": _PR_HOUSEHOLD_HEAD_NOTE,
         **(metadata or {}),
     }
     if comparison_run is not None:
-        run_metadata["comparison_run"] = comparison_run
+        run_metadata["comparison_run"] = _variant_run_name(
+            comparison_run, feature_variant
+        )
 
     return TrainingConfig(
-        name=name,
+        name=_variant_run_name(name, feature_variant),
         feature_table=feature_table,
         feature_columns=feature_columns,
         target_column="target",
@@ -151,7 +178,12 @@ def _pr_config(
         household_column="household",
         weight_column="weight_scaled",
         sample_filters=sample_filters,
-        subgroups=_pr_subgroups(age_bins, age_labels),
+        subgroups=_pr_subgroups(
+            age_bins,
+            age_labels,
+            feature_variant,
+            state_min_test_rows,
+        ),
         categorical_columns=categorical,
         seed=seed,
         n_folds=5,
@@ -159,6 +191,7 @@ def _pr_config(
         target_sensitivity=target_sensitivity,
         bootstrap_replicates=bootstrap_replicates,
         shap_sample_size=shap_sample_size,
+        state_min_test_rows=state_min_test_rows,
         model_params=model_params or {},
         split_assignment=split_assignment,
         split_assignment_path=split_assignment_path,
@@ -179,6 +212,7 @@ def pr_15_plus_config(
     model_params: dict[str, Any] | None = None,
     smoke_rows: int | None = None,
     feature_variant: str = "default",
+    state_min_test_rows: int = 500,
     metadata: dict | None = None,
 ) -> TrainingConfig:
     """The large-sample PR 15+ BP-based sensitivity model."""
@@ -200,6 +234,7 @@ def pr_15_plus_config(
         model_params=model_params,
         smoke_rows=smoke_rows,
         feature_variant=feature_variant,
+        state_min_test_rows=state_min_test_rows,
         metadata=metadata,
     )
 
@@ -216,6 +251,7 @@ def pr_15_49_config(
     model_params: dict[str, Any] | None = None,
     smoke_rows: int | None = None,
     feature_variant: str = "default",
+    state_min_test_rows: int = 500,
     metadata: dict | None = None,
 ) -> TrainingConfig:
     """The age-matched PR 15-49 comparison on the same cluster partition.
@@ -241,6 +277,7 @@ def pr_15_49_config(
         model_params=model_params,
         smoke_rows=smoke_rows,
         feature_variant=feature_variant,
+        state_min_test_rows=state_min_test_rows,
         metadata=metadata,
     )
 
@@ -367,6 +404,8 @@ __all__ = [
     "PR_15_PLUS_FEATURES",
     "PR_15_PLUS_RUN_NAME",
     "PR_15_PLUS_SAMPLE_LABEL",
+    "PR_AUDIT_FEATURE_VARIANTS",
+    "PR_AUDIT_SUBGROUP_NAMES",
     "pr_15_49_config",
     "pr_15_plus_config",
     "pr_sample_summary",

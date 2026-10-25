@@ -530,6 +530,30 @@ def _gap(value: float | None, reference: float | None) -> float | None:
     return round(value - reference, 6)
 
 
+def _unreliable_reason(
+    rows_ok: bool,
+    positives_ok: bool,
+    min_rows: int,
+    min_positives: int,
+) -> str:
+    reasons = []
+    if not rows_ok:
+        reasons.append(f"fewer than {min_rows} respondents")
+    if not positives_ok:
+        reasons.append(f"fewer than {min_positives} positives")
+    return " and ".join(reasons)
+
+
+def _audit_notes(config: TrainingConfig) -> list[str]:
+    notes = {
+        spec.note for spec in config.subgroups if spec.audit_only and spec.note
+    }
+    metadata_note = config.metadata.get("audit_subgroup_note")
+    if metadata_note:
+        notes.add(metadata_note)
+    return sorted(notes)
+
+
 def _subgroup_metrics(
     test: pd.DataFrame,
     probabilities: np.ndarray,
@@ -551,6 +575,11 @@ def _subgroup_metrics(
                 threshold=overall["threshold"],
                 n_bins=config.reliability_bins,
             )
+            rows_ok = n >= config.small_group_min_rows
+            positives_ok = (
+                metrics["positives"] >= config.small_group_min_positives
+            )
+            reliable = bool(rows_ok and positives_ok)
             rows.append(
                 {
                     "subgroup": spec.name,
@@ -563,14 +592,25 @@ def _subgroup_metrics(
                     "sensitivity": metrics["sensitivity"],
                     "specificity": metrics["specificity"],
                     "calibration_error": metrics["ece"],
+                    "gap_prevalence": _gap(
+                        metrics["prevalence"], overall["prevalence"]
+                    ),
                     "gap_roc_auc": _gap(metrics["roc_auc"], overall["roc_auc"]),
                     "gap_pr_auc": _gap(metrics["pr_auc"], overall["pr_auc"]),
                     "gap_sensitivity": _gap(
                         metrics["sensitivity"], overall["sensitivity"]
                     ),
-                    "reliable": bool(
-                        n >= config.small_group_min_rows
-                        and metrics["positives"] >= config.small_group_min_positives
+                    "gap_calibration_error": _gap(
+                        metrics["ece"], overall["ece"]
+                    ),
+                    "reliable": reliable,
+                    "unreliable_reason": ""
+                    if reliable
+                    else _unreliable_reason(
+                        rows_ok,
+                        positives_ok,
+                        config.small_group_min_rows,
+                        config.small_group_min_positives,
                     ),
                     "audit_only": spec.audit_only,
                     "note": spec.note,
@@ -769,6 +809,29 @@ def _metrics_table(metrics: dict) -> list[str]:
     return lines
 
 
+def _subgroup_table(subgroups: pd.DataFrame) -> list[str]:
+    lines = [
+        (
+            "| Subgroup | Group | n | Positives | Prevalence | ROC-AUC | PR-AUC | "
+            "Sensitivity | ECE | Δ Prevalence | Δ ROC-AUC | Δ PR-AUC | "
+            "Δ Sensitivity | Δ ECE | Reliable |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|",
+    ]
+    for row in subgroups.itertuples(index=False):
+        lines.append(
+            f"| {row.subgroup} | {row.group} | {row.n} | {row.positives} | "
+            f"{_format(row.prevalence)} | {_format(row.roc_auc)} | "
+            f"{_format(row.pr_auc)} | {_format(row.sensitivity)} | "
+            f"{_format(row.calibration_error)} | {_format(row.gap_prevalence)} | "
+            f"{_format(row.gap_roc_auc)} | "
+            f"{_format(row.gap_pr_auc)} | {_format(row.gap_sensitivity)} | "
+            f"{_format(row.gap_calibration_error)} | "
+            f"{'yes' if row.reliable else 'no'} |"
+        )
+    return lines
+
+
 def _results_report(
     config: TrainingConfig,
     metrics: dict,
@@ -793,11 +856,14 @@ def _results_report(
     if run_role:
         sample = metadata.get("sample")
         comparison = metadata.get("comparison_run")
+        feature_variant = metadata.get("feature_variant")
         lines += ["## Run role", "", str(run_role), ""]
         if sample:
             lines.append(f"- Sample: `{sample}`")
         if comparison:
             lines.append(f"- Compared with: `{comparison}`")
+        if feature_variant:
+            lines.append(f"- Feature variant: `{feature_variant}`")
         lines.append("")
 
     lines += [
@@ -898,17 +964,89 @@ def _results_report(
     if subgroups.empty:
         lines.append("No subgroup rows were produced.")
     else:
-        lines += [
-            "| Subgroup | Group | n | Positives | ROC-AUC | PR-AUC | Sensitivity | Gap ROC-AUC | Reliable |",
-            "|---|---|---:|---:|---:|---:|---:|---:|:---:|",
+        rows = subgroups
+        sex_rows = rows[rows["subgroup"].eq("sex")]
+        age_rows = rows[rows["subgroup"].eq("age_band")]
+        other_rows = rows[
+            ~rows["subgroup"].isin(["sex", "age_band"]) & ~rows["audit_only"]
         ]
-        for row in subgroups.itertuples(index=False):
-            lines.append(
-                f"| {row.subgroup} | {row.group} | {row.n} | {row.positives} | "
-                f"{_format(row.roc_auc)} | {_format(row.pr_auc)} | "
-                f"{_format(row.sensitivity)} | {_format(row.gap_roc_auc)} | "
-                f"{'yes' if row.reliable else 'no'} |"
-            )
+        audit_rows = rows[rows["audit_only"]]
+
+        lines += [
+            (
+                f"Subgroups with fewer than {config.small_group_min_rows} respondents "
+                f"or fewer than {config.small_group_min_positives} positives are "
+                "flagged `Reliable = no` and must not be used to claim fairness."
+            ),
+            "",
+            (
+                f"State rows are reported only where the test set has at least "
+                f"{config.state_min_test_rows} respondents."
+            ),
+            "",
+            "### Sex-specific metrics (mandatory)",
+            "",
+            *(
+                _subgroup_table(sex_rows)
+                if not sex_rows.empty
+                else ["_No sex rows were produced._"]
+            ),
+            "",
+            "### Age-band-specific metrics (mandatory)",
+            "",
+            *(
+                _subgroup_table(age_rows)
+                if not age_rows.empty
+                else ["_No age-band rows were produced._"]
+            ),
+            "",
+            "### Other subgroups",
+            "",
+            *(
+                _subgroup_table(other_rows)
+                if not other_rows.empty
+                else ["_No other subgroup rows were produced._"]
+            ),
+        ]
+
+        if not audit_rows.empty:
+            notes = _audit_notes(config)
+            lines += [
+                "",
+                "### Fairness audit subgroups",
+                "",
+                (
+                    "Religion and social group are audit-only here: they are "
+                    "reported to test the feature-inclusion decision, not deployed "
+                    "as default features."
+                ),
+                "",
+            ]
+            lines += [f"- {note}" for note in notes]
+            lines += ["", *_subgroup_table(audit_rows)]
+        else:
+            notes = _audit_notes(config)
+            if notes:
+                lines += [
+                    "",
+                    "### Fairness audit subgroups",
+                    "",
+                    (
+                        "This run does not report audit-only subgroup rows; the "
+                        "fairness variant reports religion and social group."
+                    ),
+                    "",
+                    *[f"- {note}" for note in notes],
+                ]
+
+        lines += [
+            "",
+            (
+                "Subgroup gaps are descriptive, not causal. Excluding a protected "
+                "attribute does not by itself make a model fair; the fairness "
+                "variant tests what including religion and social group changes."
+            ),
+        ]
 
     lines += ["", "## Feature importance", ""]
     if importance.empty:
@@ -987,15 +1125,25 @@ def _model_card(config: TrainingConfig, metrics: dict, metadata: dict) -> str:
         ", ".join(f"`{column}`" for column in config.feature_columns),
         "",
     ]
+    feature_variant = config.metadata.get("feature_variant")
     if sensitivity:
-        lines += [
-            (
-                "The PR default excludes state, religion, social group, anthropometry, "
-                "diet, cooking fuel, marital status, children ever born, the "
-                "smoking/smokeless split, and alcohol frequency."
-            ),
-            "",
-        ]
+        if feature_variant in (None, "default"):
+            lines += [
+                (
+                    "The PR default excludes state, religion, social group, "
+                    "anthropometry, diet, cooking fuel, marital status, children ever "
+                    "born, the smoking/smokeless split, and alcohol frequency."
+                ),
+                "",
+            ]
+        else:
+            lines += [
+                (
+                    f"This run is the `{feature_variant}` feature-set variant; its "
+                    "feature list is above."
+                ),
+                "",
+            ]
     lines += [
         "## Performance",
         "",
@@ -1028,6 +1176,7 @@ def _model_card(config: TrainingConfig, metrics: dict, metadata: dict) -> str:
             "can learn access-to-care patterns."
         ),
         "- Removing a protected attribute does not by itself make a model fair.",
+        *[f"- {note}" for note in _audit_notes(config)],
         "",
         "## Citation",
         "",
@@ -1216,6 +1365,12 @@ def run_training_pipeline(
             ),
         },
         "feature_count": len(config.feature_columns),
+        "feature_variant": config.metadata.get("feature_variant"),
+        "subgroup_rules": {
+            "small_group_min_rows": config.small_group_min_rows,
+            "small_group_min_positives": config.small_group_min_positives,
+            "state_min_test_rows": config.state_min_test_rows,
+        },
         "selected_model": {
             "family": selected["family"],
             "params": selected["params"],

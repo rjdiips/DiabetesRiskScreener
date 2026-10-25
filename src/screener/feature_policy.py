@@ -81,6 +81,11 @@ _PR_VARIANTS = {
     "cooking_fuel": PR_15_PLUS_FEATURES + ("cooking_fuel_clean",),
 }
 
+PR_FEATURE_VARIANTS = _PR_VARIANTS
+PR_VARIANT_NAMES = tuple(
+    name for name in PR_FEATURE_VARIANTS if name != "default"
+)
+
 FORBIDDEN_FEATURE_COLUMNS = frozenset(
     [
         *ID_COLUMNS,
@@ -97,11 +102,11 @@ FORBIDDEN_FEATURE_COLUMNS = frozenset(
 def pr_feature_set(variant: str = "default") -> tuple[str, ...]:
     """Return a documented PR feature-set variant."""
     try:
-        return _PR_VARIANTS[variant]
+        return PR_FEATURE_VARIANTS[variant]
     except KeyError as error:
         raise ValueError(
             f"unknown PR feature-set variant '{variant}'; expected one of "
-            + ", ".join(sorted(_PR_VARIANTS))
+            + ", ".join(sorted(PR_FEATURE_VARIANTS))
         ) from error
 
 

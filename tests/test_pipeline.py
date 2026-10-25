@@ -16,6 +16,7 @@ from screener.feature_policy import PR_15_PLUS_FEATURES, PR_EXCLUDED_FEATURES
 from screener.model_bundle import load_model_bundle
 from screener.pipeline import run_training_pipeline
 from screener.pr_model import pr_15_49_config, pr_15_plus_config
+from screener.pr_variants import compare_pr_variants
 from screener.splits import assign_pr_splits
 
 LIGHTGBM_TEST_PARAMS = {
@@ -113,16 +114,14 @@ def test_pr_config_sets_the_twelve_feature_default_and_the_pr_sample():
         for item in resolved["sample_filters"]
     )
     subgroup_names = {item["name"] for item in resolved["subgroups"]}
-    assert {
+    assert subgroup_names == {
         "sex",
         "age_band",
         "wealth",
         "residence",
         "education",
         "state",
-        "religion",
-        "social_group",
-    } <= subgroup_names
+    }
     assert set(PR_EXCLUDED_FEATURES).isdisjoint(config.feature_columns)
 
 
@@ -159,6 +158,7 @@ def test_pr_run_reuses_the_pipeline_and_writes_every_artifact(tmp_path):
         seed=42,
         bootstrap_replicates=20,
         shap_sample_size=50,
+        state_min_test_rows=5,
         model_params={"lightgbm": LIGHTGBM_TEST_PARAMS},
     )
 
@@ -197,8 +197,25 @@ def test_pr_run_reuses_the_pipeline_and_writes_every_artifact(tmp_path):
         "household_single_slot": True,
     }
 
+    subgroup_names = set(result.subgroup_metrics["subgroup"])
+    assert subgroup_names <= {
+        "sex",
+        "age_band",
+        "wealth",
+        "residence",
+        "education",
+        "state",
+    }
+    assert not {"religion", "social_group"} & subgroup_names
+    state_rows = result.subgroup_metrics[
+        result.subgroup_metrics["subgroup"] == "state"
+    ]
+    assert not state_rows.empty
+    assert state_rows["n"].min() >= 5
     sex_rows = result.subgroup_metrics[result.subgroup_metrics["subgroup"] == "sex"]
+
     assert sex_rows["n"].sum() == metrics["overall"]["n"]
+    assert set(sex_rows["group"]) == {"male", "female"}
 
     assert not result.shap_summary.empty
     assert {"feature", "mean_abs_shap"} <= set(result.shap_summary.columns)
@@ -210,7 +227,9 @@ def test_pr_run_reuses_the_pipeline_and_writes_every_artifact(tmp_path):
     assert metadata["seeds"]["split"] == 42
     assert metadata["package_versions"]["pandas"]
     assert len(metadata["dataset_fingerprint"]) == 64
-    assert metadata["row_counts"]["rows_used"] == metrics["overall"]["n"] + metrics["split"]["development"]["rows"]
+    assert metadata["row_counts"]["rows_used"] == (
+        metrics["overall"]["n"] + metrics["split"]["development"]["rows"]
+    )
     assert metadata["row_counts"]["rows_after_filters"] == len(features) - 1
 
     resolved = json.loads(
@@ -218,6 +237,12 @@ def test_pr_run_reuses_the_pipeline_and_writes_every_artifact(tmp_path):
     )
     assert resolved["feature_columns"] == list(PR_15_PLUS_FEATURES)
     assert resolved["split_assignment_supplied"] is True
+
+    report = result.artifacts["results_report"].read_text(encoding="utf-8")
+    model_card = result.artifacts["model_card"].read_text(encoding="utf-8")
+    assert "Δ Prevalence" in report
+    assert "household head" in report
+    assert "household head" in model_card
 
     bundle = load_model_bundle(result.artifacts["model_bundle"])
     frame = features.dropna(subset=["systolic_mean", "diastolic_mean"]).head(10)
@@ -372,3 +397,151 @@ def test_pipeline_rejects_a_target_column_as_a_feature(tmp_path):
 
     with pytest.raises(ValueError, match="forbidden"):
         run_training_pipeline(features, bad, tmp_path)
+
+
+def test_subgroup_metrics_report_gaps_and_flag_small_groups(tmp_path):
+    features = pr_shaped_features(n_clusters=400)
+    assignment = assign_pr_splits(features, seed=42)
+    config = pr_15_plus_config(
+        split_assignment=assignment,
+        seed=42,
+        bootstrap_replicates=5,
+        shap_sample_size=10,
+        model_params={"lightgbm": LIGHTGBM_TEST_PARAMS},
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+    subgroups = result.subgroup_metrics
+
+    required_columns = {
+        "subgroup",
+        "group",
+        "n",
+        "positives",
+        "prevalence",
+        "roc_auc",
+        "pr_auc",
+        "sensitivity",
+        "calibration_error",
+        "gap_roc_auc",
+        "gap_pr_auc",
+        "gap_sensitivity",
+        "gap_calibration_error",
+        "reliable",
+        "unreliable_reason",
+        "audit_only",
+        "note",
+    }
+    assert required_columns <= set(subgroups.columns)
+
+    # Sex and age band are mandatory and cover the whole test set once each.
+    sex = subgroups[subgroups["subgroup"] == "sex"]
+    age_band = subgroups[subgroups["subgroup"] == "age_band"]
+    assert set(sex["group"]) == {"male", "female"}
+    assert set(age_band["group"]) == {
+        "15-24",
+        "25-34",
+        "35-44",
+        "45-49",
+        "50-59",
+        "60-69",
+        "70+",
+    }
+    assert sex["n"].sum() == result.metrics["overall"]["n"]
+    assert age_band["n"].sum() == result.metrics["overall"]["n"]
+
+    # The synthetic test set has hundreds of respondents per sex, so those rows
+    # clear the 200-row/50-positive rule; the oldest band does not.
+    assert sex["reliable"].all()
+    oldest = age_band[age_band["group"] == "70+"]
+    assert len(oldest) == 1
+    assert not oldest.iloc[0]["reliable"]
+    assert oldest.iloc[0]["unreliable_reason"]
+    assert age_band["n"].min() < config.small_group_min_rows
+
+    # Every state in this small synthetic run has fewer than 500 test rows, so
+    # no state row is reported.
+    assert subgroups[subgroups["subgroup"] == "state"].empty
+
+    # The gaps are measured against the overall test set.
+    for column, overall_key in (
+        ("gap_roc_auc", "roc_auc"),
+        ("gap_pr_auc", "pr_auc"),
+        ("gap_sensitivity", "sensitivity"),
+    ):
+        row = sex.iloc[0]
+        expected = round(row[column.replace("gap_", "")] - result.metrics["overall"][overall_key], 6)
+        assert row[column] == expected
+
+
+def test_fairness_variant_reports_the_household_head_audit_subgroups(tmp_path):
+    features = pr_shaped_features()
+    assignment = assign_pr_splits(features, seed=42)
+    config = pr_15_plus_config(
+        split_assignment=assignment,
+        seed=42,
+        bootstrap_replicates=5,
+        shap_sample_size=10,
+        feature_variant="fairness",
+        model_params={"lightgbm": LIGHTGBM_TEST_PARAMS},
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    assert config.feature_columns == PR_15_PLUS_FEATURES + (
+        "religion",
+        "social_group",
+    )
+    audit_rows = result.subgroup_metrics[
+        result.subgroup_metrics["subgroup"].isin(["religion", "social_group"])
+    ]
+    assert set(audit_rows["subgroup"]) == {"religion", "social_group"}
+    assert audit_rows["audit_only"].all()
+    assert audit_rows["note"].str.contains("household head").all()
+
+    report = result.artifacts["results_report"].read_text(encoding="utf-8")
+    assert "household head" in report
+    assert "does not by itself make a model fair" in report
+
+    model_card = result.artifacts["model_card"].read_text(encoding="utf-8")
+    assert "household head" in model_card
+    assert "feature-set variant" in model_card
+    assert "`fairness`" in model_card
+    assert "The PR default excludes" not in model_card
+
+
+def test_variant_comparison_compares_real_pipeline_runs(tmp_path):
+    features = pr_shaped_features()
+    assignment = assign_pr_splits(features, seed=42)
+    shared = {
+        "split_assignment": assignment,
+        "seed": 42,
+        "bootstrap_replicates": 5,
+        "shap_sample_size": 10,
+        "model_params": {"lightgbm": LIGHTGBM_TEST_PARAMS},
+    }
+
+    default = run_training_pipeline(
+        features,
+        pr_15_plus_config(**shared),
+        tmp_path / "default",
+    )
+    state = run_training_pipeline(
+        features,
+        pr_15_plus_config(feature_variant="state", **shared),
+        tmp_path / "state",
+    )
+
+    comparison = compare_pr_variants(default, {"state": state})
+
+    assert comparison["variants"]["state"]["added_features"] == ["state"]
+    expected_delta = round(
+        state.metrics["overall"]["roc_auc"] - default.metrics["overall"]["roc_auc"],
+        6,
+    )
+    assert comparison["variants"]["state"]["deltas"]["roc_auc"] == expected_delta
+    assert comparison["variants"]["state"]["subgroups"]["sex"]
+    assert comparison["variants"]["state"]["subgroups"]["age_band"]
+    assert comparison["small_group_rules"]["small_group_min_rows"] == 200
+
+

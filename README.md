@@ -2,7 +2,7 @@
 
 A research and portfolio project that estimates the probability of elevated random blood glucose or diagnosed diabetes among Indian adults using NFHS-5 (2019-21).
 
-**Status:** data downloaded, audited, and harmonised IR/MR and PR feature tables built; shared model pipeline and PR sensitivity run implemented.
+**Status:** data downloaded, audited, and harmonised IR/MR and PR feature tables built; shared model pipeline, PR sensitivity run, and PR subgroup/fairness variant comparison implemented.
 
 ## What this is
 
@@ -128,6 +128,21 @@ Each run writes a timestamped directory under `artifacts/pr/` with:
 - a serialized model bundle (local only and gitignored).
 
 The primary target and the NFHS fact-sheet target are reported separately. `--smoke` trains on a stratified sample instead of the full table. The PR model is a sensitivity analysis; the primary IR/MR model remains the deployed model.
+
+## PR subgroups, fairness, and feature-set variants
+
+Every PR run reports sex, age band (15–24, 25–34, 35–44, 45–49, 50–59, 60–69, 70+), wealth quintile, residence, education, and state. State rows are reported only where the test set has at least 500 respondents. Each row carries n, positives, prevalence, ROC-AUC, PR-AUC, sensitivity at the chosen threshold, calibration error (ECE), and the gaps versus the overall test set. Subgroups with fewer than 200 respondents or fewer than 50 positives are flagged `reliable = no` and must not be used to claim fairness.
+
+Religion and social group are audited through the fairness variant rather than the default run. They describe the household head, not necessarily the respondent. Excluding a protected attribute does not by itself make a model fair, so the report shows what including those features changes.
+
+Run the default model and the feature-set variants on the same PR sample and split assignment:
+
+```powershell
+python scripts/run_pr_variants.py --sample 15plus --smoke
+python scripts/run_pr_variants.py --sample 15plus --variants state fairness
+```
+
+The state variant adds `state`; the fairness variant adds `religion` and `social_group`; the combined variant adds all three; the cooking-fuel variant adds `cooking_fuel_clean`. The script writes each run's normal artifact set plus a `variant_comparison.json` and `variant_comparison.md` under `artifacts/pr/variants/`. The comparison reports each variant's feature delta and overall metric delta versus the default, with mandatory sex and age-band tables and any fairness-audit subgroups. A higher variant ROC-AUC or PR-AUC is not treated as automatic evidence that the variant is better.
 
 ## Disclaimer
 

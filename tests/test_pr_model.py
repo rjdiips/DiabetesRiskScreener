@@ -186,3 +186,44 @@ def test_pr_configs_record_distinct_run_roles():
     assert younger.metadata["comparison_run"] == "pr_15plus_bp"
     assert plus.metadata["run_role"] != younger.metadata["run_role"]
     assert plus.name != younger.name
+
+
+def test_pr_default_reports_core_subgroups_and_the_fairness_variant_adds_audit_subgroups():
+    default = pr_15_plus_config()
+    names = tuple(spec.name for spec in default.subgroups)
+
+    assert names == ("sex", "age_band", "wealth", "residence", "education", "state")
+    state = next(spec for spec in default.subgroups if spec.name == "state")
+    assert state.minimum_test_rows == 500
+    assert default.small_group_min_rows == 200
+    assert default.small_group_min_positives == 50
+
+    fairness = pr_15_plus_config(feature_variant="fairness")
+    fairness_names = tuple(spec.name for spec in fairness.subgroups)
+    assert fairness_names == names + ("religion", "social_group")
+    religion = next(spec for spec in fairness.subgroups if spec.name == "religion")
+    social_group = next(
+        spec for spec in fairness.subgroups if spec.name == "social_group"
+    )
+    assert religion.audit_only and social_group.audit_only
+    assert "household head" in religion.note
+    assert "household head" in social_group.note
+
+    combined = pr_15_plus_config(feature_variant="combined")
+    combined_names = tuple(spec.name for spec in combined.subgroups)
+    assert combined_names == names + ("religion", "social_group")
+
+    for variant in ("state", "cooking_fuel"):
+        variant_names = tuple(
+            spec.name
+            for spec in pr_15_plus_config(feature_variant=variant).subgroups
+        )
+        assert variant_names == names
+
+
+def test_pr_15_49_variant_compares_with_the_matching_15_plus_variant():
+    config = pr_15_49_config(feature_variant="fairness")
+
+    assert config.name == "pr_15to49_bp_fairness"
+    assert config.metadata["comparison_run"] == "pr_15plus_bp_fairness"
+    assert config.metadata["feature_variant"] == "fairness"
