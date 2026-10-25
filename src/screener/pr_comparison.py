@@ -514,6 +514,18 @@ def _format_plain(value: Any) -> str:
     return str(value)
 
 
+def run_metric(
+    comparison: Mapping[str, Any],
+    run_key: str,
+    name: str,
+    *,
+    weighted: bool = False,
+) -> Any:
+    """Return one run metric without exposing the comparison's nested shape."""
+    block = "weighted" if weighted else "overall"
+    return comparison["runs"][run_key]["metrics"][block].get(name)
+
+
 def _delta_block(runs: Mapping[str, dict], block: str) -> dict:
     return {
         "pr_15_49_vs_primary": _metric_deltas(
@@ -672,7 +684,6 @@ def _feature_table(comparison: Mapping[str, Any]) -> list[str]:
 
 
 def _overall_table(comparison: Mapping[str, Any], *, weighted: bool = False) -> list[str]:
-    block = "weighted" if weighted else "overall"
     lines = [
         "| Metric | Primary IR/MR 15–49 | PR 15–49 | PR 15+ |",
         "|---|---:|---:|---:|",
@@ -681,25 +692,25 @@ def _overall_table(comparison: Mapping[str, Any], *, weighted: bool = False) -> 
         cells = [
             (
                 f"| {label} | "
-                f"{format_value(comparison['runs']['primary']['metrics'][block].get(key))} |"
+                f"{format_value(run_metric(comparison, 'primary', key, weighted=weighted))} |"
             )
         ]
         for run_key in ("pr_15_49", "pr_15_plus"):
             cells.append(
-                f" {format_value(comparison['runs'][run_key]['metrics'][block].get(key))} |"
+                f" {format_value(run_metric(comparison, run_key, key, weighted=weighted))} |"
             )
         lines.append("".join(cells))
     lines.append(
         "| Calibrator | "
-        f"{_format_plain(comparison['runs']['primary']['metrics']['calibrator'])} | "
-        f"{_format_plain(comparison['runs']['pr_15_49']['metrics']['calibrator'])} | "
-        f"{_format_plain(comparison['runs']['pr_15_plus']['metrics']['calibrator'])} |"
+        f"{_format_plain(run_metric(comparison, 'primary', 'calibrator'))} | "
+        f"{_format_plain(run_metric(comparison, 'pr_15_49', 'calibrator'))} | "
+        f"{_format_plain(run_metric(comparison, 'pr_15_plus', 'calibrator'))} |"
     )
     lines.append(
         "| Selected model | "
-        f"{_format_plain(comparison['runs']['primary']['metrics']['selected_family'])} | "
-        f"{_format_plain(comparison['runs']['pr_15_49']['metrics']['selected_family'])} | "
-        f"{_format_plain(comparison['runs']['pr_15_plus']['metrics']['selected_family'])} |"
+        f"{_format_plain(run_metric(comparison, 'primary', 'selected_family'))} | "
+        f"{_format_plain(run_metric(comparison, 'pr_15_49', 'selected_family'))} | "
+        f"{_format_plain(run_metric(comparison, 'pr_15_plus', 'selected_family'))} |"
     )
     return lines
 
@@ -1054,5 +1065,6 @@ __all__ = [
     "compare_primary_vs_pr",
     "load_run_result",
     "render_primary_vs_pr_report",
+    "run_metric",
     "write_primary_vs_pr_report",
 ]

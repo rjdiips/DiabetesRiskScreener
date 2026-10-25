@@ -14,6 +14,7 @@ from screener.pr_comparison import (
     compare_primary_vs_pr,
     load_run_result,
     render_primary_vs_pr_report,
+    run_metric,
     write_primary_vs_pr_report,
 )
 
@@ -263,6 +264,16 @@ def test_compare_primary_vs_pr_computes_correct_differences():
     assert comparison["delta_direction"]["pr_15_49_vs_primary"] == (
         "PR 15–49 minus primary"
     )
+
+
+def test_run_metric_hides_the_nested_comparison_shape():
+    comparison = compare_primary_vs_pr(*_three_runs())
+
+    assert run_metric(comparison, "primary", "roc_auc") == pytest.approx(0.80)
+    assert run_metric(
+        comparison, "pr_15_49", "roc_auc", weighted=True
+    ) == pytest.approx(0.79)
+    assert run_metric(comparison, "pr_15_plus", "does_not_exist") is None
 
 
 def test_missing_metric_and_blocks_are_reported_as_not_available():
