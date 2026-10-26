@@ -4,7 +4,7 @@
 
 **Blocked by:** 01; primary-model-pipeline (external spec, not yet implemented).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The PR split assignment reuses the primary cluster split and fold for overlapping clusters.
 - [x] Clusters that do not appear in the primary assignment are assigned deterministically with the same seed and stratification rules.

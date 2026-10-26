@@ -4,7 +4,7 @@
 
 **Blocked by:** 03.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Subgroup rows exist for sex, age band (15–24, 25–34, 35–44, 45–49, 50–59, 60–69, 70+), wealth quintile, residence, education, and every state with at least 500 test respondents.
 - [x] Each subgroup row reports n, positives, prevalence, ROC-AUC, PR-AUC, sensitivity at the chosen threshold, calibration error, and the gap versus the overall test set.

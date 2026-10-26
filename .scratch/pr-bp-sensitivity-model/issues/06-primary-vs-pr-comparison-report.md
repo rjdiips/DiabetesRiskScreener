@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 04, 05; primary-model-pipeline (external spec, not yet implemented).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A pure comparison helper accepts the primary result and the PR 15+ and PR 15–49 results and returns a structured comparison.
 - [x] The report includes a sample table with row counts, sex composition, age composition, prevalence, and weighted prevalence.

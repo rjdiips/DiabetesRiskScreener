@@ -4,7 +4,7 @@
 
 **Blocked by:** 03.
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The run filters to `age_15_49 == True` and otherwise uses the PR 15+ config.
 - [x] The BP-valid 15–49 sample reconciles to 1,290,219 rows and 112,898 positives.

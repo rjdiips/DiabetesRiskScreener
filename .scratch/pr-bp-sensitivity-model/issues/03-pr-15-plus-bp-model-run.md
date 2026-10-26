@@ -4,7 +4,7 @@
 
 **Blocked by:** 02; primary-model-pipeline (external spec, not yet implemented).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The PR config sets the PR feature table, the `age >= 15` sample, the 12-feature default set, the `target` column, cluster grouping, the survey weight column, and the PR subgroup columns.
 - [x] The default feature set is exactly `female`, `age`, `urban`, `wealth`, `education`, `tobacco_any`, `alcohol_any`, `systolic_mean`, `diastolic_mean`, `bp_readings`, `bp_high`, and `bp_medication`.

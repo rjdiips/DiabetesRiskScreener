@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] `build_pr_features(raw_pr)` returns a table with the harmonised IR/MR columns plus `cooking_fuel` and `cooking_fuel_clean`.
 - [x] The sample filter retains adults aged 15–98 with sex codes 1 or 2, valid random glucose (20–600 mg/dL), and a known diagnosis/medication status; it excludes sex code 3, invalid glucose, and rows with no known target.
