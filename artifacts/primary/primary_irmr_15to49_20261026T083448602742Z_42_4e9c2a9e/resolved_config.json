@@ -1,7 +1,7 @@
 {
   "run_id": "primary_irmr_15to49_20261026T083448602742Z_42_4e9c2a9e",
   "name": "primary_irmr_15to49",
-  "feature_table": "C:\\Users\\Rajdeep\\Documents\\Visual-Studio\\diabetes-risk-screener\\data\\processed\\irmr_features.parquet",
+  "feature_table": "data/processed/irmr_features.parquet",
   "feature_columns": [
     "female",
     "age",

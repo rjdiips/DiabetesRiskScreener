@@ -1,7 +1,7 @@
 {
   "run_id": "pr_15to49_bp_20261026T084051779902Z_42_96adb799",
   "name": "pr_15to49_bp",
-  "feature_table": "C:\\Users\\Rajdeep\\Documents\\Visual-Studio\\diabetes-risk-screener\\data\\processed\\pr_features.parquet",
+  "feature_table": "data/processed/pr_features.parquet",
   "feature_columns": [
     "female",
     "age",
@@ -163,7 +163,7 @@
     "platt"
   ],
   "split_assignment_supplied": true,
-  "split_assignment_path": "C:\\Users\\Rajdeep\\Documents\\Visual-Studio\\diabetes-risk-screener\\data\\processed\\pr_split_assignment.parquet",
+  "split_assignment_path": "data/processed/pr_split_assignment.parquet",
   "smoke_rows": null,
   "metadata": {
     "model_role": "sensitivity",

@@ -293,7 +293,7 @@ Build it after the PR feature table:
 
 ```powershell
 python scripts/build_pr_split.py
-python scripts/build_pr_split.py --primary-assignment artifacts/primary/split_assignment.parquet
+python scripts/build_pr_split.py --primary-assignment artifacts/primary/<primary-run>/split_assignment.parquet
 ```
 
 | Output | Contents |

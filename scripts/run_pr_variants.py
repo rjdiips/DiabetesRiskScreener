@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import pandas as pd
 
-from screener.config import ARTIFACTS_DIR, PROCESSED_DIR
+from screener.config import ARTIFACTS_DIR, PROCESSED_DIR, relative_to_project
 from screener.feature_policy import PR_VARIANT_NAMES
 from screener.pipeline import run_training_pipeline
 from screener.pr_model import (
@@ -62,7 +62,7 @@ def _run(
     output: Path,
 ):
     config = builder(
-        feature_table=str(args.features),
+        feature_table=relative_to_project(args.features),
         split_assignment=split_assignment,
         split_assignment_path=split_path,
         seed=args.seed,
@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
 
     features = pd.read_parquet(args.features)
     split_assignment = pd.read_parquet(args.split_assignment)
-    split_path = str(args.split_assignment)
+    split_path = relative_to_project(args.split_assignment)
 
     reconciliation = _RECONCILERS[args.sample](features)
     builder = _CONFIG_BUILDERS[args.sample]

@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import pandas as pd
 
-from screener.config import ARTIFACTS_DIR, PROCESSED_DIR
+from screener.config import ARTIFACTS_DIR, PROCESSED_DIR, relative_to_project
 from screener.pipeline import run_training_pipeline
 from screener.pr_model import (
     pr_15_49_config,
@@ -124,12 +124,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         split_assignment = pd.read_parquet(args.split_assignment)
-        split_path = str(args.split_assignment)
+        split_path = relative_to_project(args.split_assignment)
 
     reconciliation = _RECONCILERS[args.sample](features)
     summary = reconciliation["summary"]
     config = _CONFIG_BUILDERS[args.sample](
-        feature_table=str(args.features),
+        feature_table=relative_to_project(args.features),
         split_assignment=split_assignment,
         split_assignment_path=split_path,
         seed=args.seed,

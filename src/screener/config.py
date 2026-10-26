@@ -24,3 +24,18 @@ GLUCOSE_MISSING_CODES = (995.0, 996.0, 997.0, 998.0, 999.0)
 AGE_MIN = 15
 AGE_MAX = 98
 AGE_MAX_PRIMARY = 49
+
+
+def relative_to_project(path: str | Path) -> str:
+    """Render a path for a published record.
+
+    Run metadata and resolved configs are published, so they must not embed a
+    contributor's local directory layout. Paths inside the project become
+    forward-slash paths relative to the project root; anything else is kept
+    as-is with forward slashes.
+    """
+    candidate = Path(path)
+    try:
+        return candidate.resolve().relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return candidate.as_posix()

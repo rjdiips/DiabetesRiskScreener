@@ -15,7 +15,7 @@
   },
   "config": {
     "name": "primary_irmr_15to49",
-    "feature_table": "C:\\Users\\Rajdeep\\Documents\\Visual-Studio\\diabetes-risk-screener\\data\\processed\\irmr_features.parquet",
+    "feature_table": "data/processed/irmr_features.parquet",
     "feature_columns": [
       "female",
       "age",

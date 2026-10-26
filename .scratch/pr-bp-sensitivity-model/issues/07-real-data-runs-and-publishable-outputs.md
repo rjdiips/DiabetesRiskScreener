@@ -61,3 +61,19 @@ the sample reconciliation, and the published run paths.
 
 Tests: full suite 126 passing after the comparison-report fix; ruff is clean on the new/changed
 files.
+
+### Post-review fixes
+
+A two-axis code review of `4416d6d..1194428` raised two cheap standards findings, both now fixed:
+
+- Published run records embedded absolute local paths (`feature_table`, `split_assignment_path`) in
+  `resolved_config.json` and `run_metadata.json`. `screener.config.relative_to_project()` now renders
+  paths relative to the project root with forward slashes, and the primary/PR run scripts use it, so
+  future runs publish `data/processed/...` instead of a contributor's directory layout. The three
+  committed runs' JSON records were rewritten to match.
+- `data/README.md` documented the split-reuse command as
+  `--primary-assignment artifacts/primary/split_assignment.parquet`, a path the pipeline never
+  produces; it now uses the `artifacts/primary/<primary-run>/split_assignment.parquet` form.
+
+Tests: full suite 128 passing, including `tests/test_config.py` for the new path helper; ruff is
+clean. A real-data `--smoke` run wrote relative paths end to end.
