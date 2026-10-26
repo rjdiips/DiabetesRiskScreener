@@ -1,0 +1,221 @@
+{
+  "run_id": "pr_15plus_bp_20261026T084255023166Z_42_2a9e78b6",
+  "name": "pr_15plus_bp",
+  "feature_table": "C:\\Users\\Rajdeep\\Documents\\Visual-Studio\\diabetes-risk-screener\\data\\processed\\pr_features.parquet",
+  "feature_columns": [
+    "female",
+    "age",
+    "urban",
+    "wealth",
+    "education",
+    "tobacco_any",
+    "alcohol_any",
+    "systolic_mean",
+    "diastolic_mean",
+    "bp_readings",
+    "bp_high",
+    "bp_medication"
+  ],
+  "feature_count": 12,
+  "target_column": "target",
+  "secondary_target_column": "target_fact_sheet",
+  "target_definition": "glucose > 140 OR diagnosed OR medication",
+  "group_column": "cluster",
+  "household_column": "household",
+  "weight_column": "weight_scaled",
+  "sample_filters": [
+    {
+      "column": "age",
+      "minimum": 15,
+      "maximum": null,
+      "values": [],
+      "require_notna": false
+    },
+    {
+      "column": "systolic_mean",
+      "minimum": null,
+      "maximum": null,
+      "values": [],
+      "require_notna": true
+    },
+    {
+      "column": "diastolic_mean",
+      "minimum": null,
+      "maximum": null,
+      "values": [],
+      "require_notna": true
+    }
+  ],
+  "subgroups": [
+    {
+      "name": "sex",
+      "column": "female",
+      "bins": [],
+      "labels": [],
+      "value_labels": [
+        [
+          0,
+          "male"
+        ],
+        [
+          1,
+          "female"
+        ]
+      ],
+      "minimum_test_rows": 0,
+      "audit_only": false,
+      "note": ""
+    },
+    {
+      "name": "age_band",
+      "column": "age",
+      "bins": [
+        15,
+        25,
+        35,
+        45,
+        50,
+        60,
+        70,
+        null
+      ],
+      "labels": [
+        "15-24",
+        "25-34",
+        "35-44",
+        "45-49",
+        "50-59",
+        "60-69",
+        "70+"
+      ],
+      "value_labels": [],
+      "minimum_test_rows": 0,
+      "audit_only": false,
+      "note": ""
+    },
+    {
+      "name": "wealth",
+      "column": "wealth",
+      "bins": [],
+      "labels": [],
+      "value_labels": [],
+      "minimum_test_rows": 0,
+      "audit_only": false,
+      "note": ""
+    },
+    {
+      "name": "residence",
+      "column": "residence",
+      "bins": [],
+      "labels": [],
+      "value_labels": [
+        [
+          1,
+          "urban"
+        ],
+        [
+          2,
+          "rural"
+        ]
+      ],
+      "minimum_test_rows": 0,
+      "audit_only": false,
+      "note": ""
+    },
+    {
+      "name": "education",
+      "column": "education",
+      "bins": [],
+      "labels": [],
+      "value_labels": [],
+      "minimum_test_rows": 0,
+      "audit_only": false,
+      "note": ""
+    },
+    {
+      "name": "state",
+      "column": "state",
+      "bins": [],
+      "labels": [],
+      "value_labels": [],
+      "minimum_test_rows": 500,
+      "audit_only": false,
+      "note": ""
+    }
+  ],
+  "categorical_columns": [],
+  "seed": 42,
+  "test_fraction": 0.2,
+  "n_folds": 5,
+  "target_sensitivity": 0.8,
+  "bootstrap_replicates": 1000,
+  "shap_sample_size": 5000,
+  "reliability_bins": 10,
+  "small_group_min_rows": 200,
+  "small_group_min_positives": 50,
+  "state_min_test_rows": 500,
+  "model_params": {},
+  "calibration_methods": [
+    "isotonic",
+    "platt"
+  ],
+  "split_assignment_supplied": true,
+  "split_assignment_path": "C:\\Users\\Rajdeep\\Documents\\Visual-Studio\\diabetes-risk-screener\\data\\processed\\pr_split_assignment.parquet",
+  "smoke_rows": null,
+  "metadata": {
+    "model_role": "sensitivity",
+    "sample": "age_15_plus",
+    "run_role": "PR 15+ BP sensitivity model covering all adults aged 15+ with a valid blood-pressure pair.",
+    "feature_variant": "default",
+    "audit_subgroup_note": "Describes the household head, not necessarily the respondent.",
+    "sample_reconciliation": {
+      "status": "pass",
+      "summary": {
+        "age_min": 15,
+        "age_max": null,
+        "rows": 1805697,
+        "positives": 253091,
+        "prevalence": 0.140162,
+        "bp_valid_rate": 0.998719,
+        "age_15_49_rows": 1290219,
+        "age_15_49_positives": 112898,
+        "age_50_plus_rows": 515478,
+        "age_50_plus_positives": 140193
+      },
+      "checks": {
+        "bp_valid_rows": {
+          "expected": 1805697,
+          "observed": 1805697,
+          "pass": true
+        },
+        "bp_positive_rows": {
+          "expected": 253091,
+          "observed": 253091,
+          "pass": true
+        },
+        "bp_valid_age_15_49": {
+          "expected": 1290219,
+          "observed": 1290219,
+          "pass": true
+        },
+        "bp_positive_age_15_49": {
+          "expected": 112898,
+          "observed": 112898,
+          "pass": true
+        },
+        "bp_valid_age_50_plus": {
+          "expected": 515478,
+          "observed": 515478,
+          "pass": true
+        },
+        "bp_positive_age_50_plus": {
+          "expected": 140193,
+          "observed": 140193,
+          "pass": true
+        }
+      }
+    }
+  },
+  "resolved_model_params": {},
+  "selected_family": "lightgbm"
+}

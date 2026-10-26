@@ -305,6 +305,33 @@ The partition is cluster-grouped: a 20% test holdout and five development folds.
 
 Household identity is the `(cluster, household)` pair because DHS `hv002` household numbers repeat across clusters.
 
+### Real-data model runs and sample reconciliation
+
+The published runs were built in this order so the three models share one cluster partition where the recodes overlap:
+
+```powershell
+python scripts/build_pr_features.py
+python scripts/build_pr_split.py
+python scripts/run_primary_model.py
+python scripts/build_pr_split.py --primary-assignment artifacts/primary/<primary-run>/split_assignment.parquet
+python scripts/run_pr_model.py --sample 15plus --output artifacts/pr/runs
+python scripts/run_pr_model.py --sample 15-49 --output artifacts/pr/runs
+python scripts/run_pr_comparison.py --primary artifacts/primary/<primary-run> --pr-15-49 artifacts/pr/runs/<pr-15-49-run> --pr-15-plus artifacts/pr/runs/<pr-15-plus-run>
+python scripts/verify_pr_samples.py
+```
+
+Both PR runs report `split_source: mixed`: overlapping clusters reuse the primary partition, and PR-only clusters are assigned by the same rule. The reconciliation checks pass:
+
+| Check | Rows | Positives | Status |
+|---|---:|---:|---|
+| PR feature table | 1,808,013 | 253,421 | pass |
+| BP-valid 15+ | 1,805,697 | 253,091 | pass |
+| BP-valid 15–49 | 1,290,219 | 112,898 | pass |
+| BP-valid 50+ | 515,478 | 140,193 | pass |
+| Primary IR/MR 15–49 | 774,861 | 64,526 | pass |
+
+The runs write aggregate metrics, tables, reports, model cards, and SHAP plots under `artifacts/`. Split assignments, per-respondent SHAP values, model bundles, and the microdata remain local and gitignored.
+
 ---
 
 ## 8. Which sample to model?

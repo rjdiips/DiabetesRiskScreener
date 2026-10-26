@@ -246,6 +246,15 @@ def test_compare_primary_vs_pr_has_complete_tables_for_all_three_runs():
     json.dumps(comparison, allow_nan=False)
 
 
+def test_report_shows_calibrator_and_selected_family():
+    comparison = compare_primary_vs_pr(*_three_runs())
+
+    report = render_primary_vs_pr_report(comparison)
+
+    assert "| Calibrator | isotonic | platt | isotonic |" in report
+    assert "| Selected model | lightgbm | lightgbm | lightgbm |" in report
+
+
 def test_compare_primary_vs_pr_computes_correct_differences():
     comparison = compare_primary_vs_pr(*_three_runs())
 

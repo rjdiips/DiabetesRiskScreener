@@ -1,0 +1,295 @@
+{
+  "run_id": "primary_irmr_15to49_20261026T083448602742Z_42_4e9c2a9e",
+  "name": "primary_irmr_15to49",
+  "run_role": "Primary IR/MR 15-49 reference model with the rich anthropometry, diet, and BP feature set. This is the deployed screener; the PR runs are sensitivity analyses.",
+  "sample": "age_15_49",
+  "comparison_run": null,
+  "started_at": "2026-10-26T08:31:40.529246+00:00",
+  "finished_at": "2026-10-26T08:34:50.356379+00:00",
+  "split_source": "generated",
+  "split_assignment_source": "generated",
+  "seeds": {
+    "split": 42,
+    "model": 42,
+    "bootstrap": 42
+  },
+  "config": {
+    "name": "primary_irmr_15to49",
+    "feature_table": "C:\\Users\\Rajdeep\\Documents\\Visual-Studio\\diabetes-risk-screener\\data\\processed\\irmr_features.parquet",
+    "feature_columns": [
+      "female",
+      "age",
+      "urban",
+      "wealth",
+      "education",
+      "marital_status",
+      "children_ever_born",
+      "height_cm",
+      "weight_kg",
+      "bmi",
+      "waist_cm",
+      "hip_cm",
+      "waist_hip_ratio",
+      "systolic_mean",
+      "diastolic_mean",
+      "bp_readings",
+      "bp_high",
+      "bp_medication",
+      "tobacco_any",
+      "smoking_any",
+      "smokeless_any",
+      "alcohol_any",
+      "alcohol_frequency",
+      "diet_milk",
+      "diet_pulses",
+      "diet_green_leafy",
+      "diet_fruit",
+      "diet_eggs",
+      "diet_fish",
+      "diet_meat",
+      "diet_fried",
+      "diet_aerated"
+    ],
+    "feature_count": 32,
+    "target_column": "target",
+    "secondary_target_column": "target_fact_sheet",
+    "target_definition": "glucose > 140 OR diagnosed OR medication",
+    "group_column": "cluster",
+    "household_column": "household",
+    "weight_column": "weight_scaled",
+    "sample_filters": [
+      {
+        "column": "age_15_49",
+        "minimum": null,
+        "maximum": null,
+        "values": [
+          true
+        ],
+        "require_notna": false
+      }
+    ],
+    "subgroups": [
+      {
+        "name": "sex",
+        "column": "female",
+        "bins": [],
+        "labels": [],
+        "value_labels": [
+          [
+            0,
+            "male"
+          ],
+          [
+            1,
+            "female"
+          ]
+        ],
+        "minimum_test_rows": 0,
+        "audit_only": false,
+        "note": ""
+      },
+      {
+        "name": "age_band",
+        "column": "age",
+        "bins": [
+          15,
+          25,
+          35,
+          45,
+          50
+        ],
+        "labels": [
+          "15-24",
+          "25-34",
+          "35-44",
+          "45-49"
+        ],
+        "value_labels": [],
+        "minimum_test_rows": 0,
+        "audit_only": false,
+        "note": ""
+      },
+      {
+        "name": "wealth",
+        "column": "wealth",
+        "bins": [],
+        "labels": [],
+        "value_labels": [],
+        "minimum_test_rows": 0,
+        "audit_only": false,
+        "note": ""
+      },
+      {
+        "name": "residence",
+        "column": "residence",
+        "bins": [],
+        "labels": [],
+        "value_labels": [
+          [
+            1,
+            "urban"
+          ],
+          [
+            2,
+            "rural"
+          ]
+        ],
+        "minimum_test_rows": 0,
+        "audit_only": false,
+        "note": ""
+      },
+      {
+        "name": "education",
+        "column": "education",
+        "bins": [],
+        "labels": [],
+        "value_labels": [],
+        "minimum_test_rows": 0,
+        "audit_only": false,
+        "note": ""
+      },
+      {
+        "name": "state",
+        "column": "state",
+        "bins": [],
+        "labels": [],
+        "value_labels": [],
+        "minimum_test_rows": 500,
+        "audit_only": false,
+        "note": ""
+      },
+      {
+        "name": "religion",
+        "column": "religion",
+        "bins": [],
+        "labels": [],
+        "value_labels": [],
+        "minimum_test_rows": 0,
+        "audit_only": true,
+        "note": "Reported for the fairness audit only; not a deployed model feature."
+      },
+      {
+        "name": "social_group",
+        "column": "social_group",
+        "bins": [],
+        "labels": [],
+        "value_labels": [],
+        "minimum_test_rows": 0,
+        "audit_only": true,
+        "note": "Reported for the fairness audit only; not a deployed model feature."
+      }
+    ],
+    "categorical_columns": [],
+    "seed": 42,
+    "test_fraction": 0.2,
+    "n_folds": 5,
+    "target_sensitivity": 0.8,
+    "bootstrap_replicates": 1000,
+    "shap_sample_size": 5000,
+    "reliability_bins": 10,
+    "small_group_min_rows": 200,
+    "small_group_min_positives": 50,
+    "state_min_test_rows": 500,
+    "model_params": {},
+    "calibration_methods": [
+      "isotonic",
+      "platt"
+    ],
+    "split_assignment_supplied": false,
+    "split_assignment_path": null,
+    "smoke_rows": null,
+    "metadata": {
+      "model_role": "primary",
+      "sample": "age_15_49",
+      "run_role": "Primary IR/MR 15-49 reference model with the rich anthropometry, diet, and BP feature set. This is the deployed screener; the PR runs are sensitivity analyses.",
+      "feature_variant": "default",
+      "audit_subgroup_note": "Reported for the fairness audit only; not a deployed model feature.",
+      "sample_reconciliation": {
+        "status": "pass",
+        "summary": {
+          "rows": 774861,
+          "positives": 64526,
+          "prevalence": 0.083274
+        },
+        "checks": {
+          "rows": {
+            "expected": 774861,
+            "observed": 774861,
+            "pass": true
+          },
+          "positives": {
+            "expected": 64526,
+            "observed": 64526,
+            "pass": true
+          }
+        }
+      }
+    }
+  },
+  "package_versions": {
+    "pandas": "3.0.3",
+    "numpy": "2.4.6",
+    "scikit-learn": "1.9.0",
+    "lightgbm": "4.7.0",
+    "shap": "0.54.1",
+    "joblib": "1.5.3",
+    "pyarrow": "26.0.0"
+  },
+  "python": "3.14.6 (tags/v3.14.6:c63aec6, Jun 10 2026, 10:26:10) [MSC v.1944 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "dataset_fingerprint": "4e9c2a9ec22f923ab38312f72e8590fdb07ba3493f0d014dcadac594a375d683",
+  "row_counts": {
+    "rows_after_filters": 774861,
+    "rows_used": 774861,
+    "positives_used": 64526,
+    "smoke": false,
+    "development_rows": 619915,
+    "test_rows": 154946,
+    "test_positives": 12943,
+    "clusters": 30112,
+    "households": 497642
+  },
+  "feature_count": 32,
+  "feature_variant": "default",
+  "subgroup_rules": {
+    "small_group_min_rows": 200,
+    "small_group_min_positives": 50,
+    "state_min_test_rows": 500
+  },
+  "selected_model": {
+    "family": "lightgbm",
+    "params": {},
+    "importance_type": "gain"
+  },
+  "shap": {
+    "method": "shap",
+    "fallback": false
+  },
+  "extra": {
+    "model_role": "primary",
+    "sample": "age_15_49",
+    "run_role": "Primary IR/MR 15-49 reference model with the rich anthropometry, diet, and BP feature set. This is the deployed screener; the PR runs are sensitivity analyses.",
+    "feature_variant": "default",
+    "audit_subgroup_note": "Reported for the fairness audit only; not a deployed model feature.",
+    "sample_reconciliation": {
+      "status": "pass",
+      "summary": {
+        "rows": 774861,
+        "positives": 64526,
+        "prevalence": 0.083274
+      },
+      "checks": {
+        "rows": {
+          "expected": 774861,
+          "observed": 774861,
+          "pass": true
+        },
+        "positives": {
+          "expected": 64526,
+          "observed": 64526,
+          "pass": true
+        }
+      }
+    }
+  }
+}

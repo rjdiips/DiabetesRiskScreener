@@ -1,0 +1,13 @@
+feature,importance,importance_type
+age,1557311.2002580762,gain
+systolic_mean,204574.5572257042,gain
+bp_medication,97026.61502933502,gain
+diastolic_mean,83237.24696427584,gain
+wealth,39161.17037630081,gain
+education,21795.352896094322,gain
+bp_high,19136.0059967041,gain
+female,18205.624002456665,gain
+bp_readings,11050.823538303375,gain
+urban,9975.909225463867,gain
+tobacco_any,5180.476704835892,gain
+alcohol_any,3061.9516744613647,gain

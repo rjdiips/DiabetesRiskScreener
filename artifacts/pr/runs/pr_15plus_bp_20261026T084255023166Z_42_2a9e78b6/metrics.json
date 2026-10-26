@@ -1,0 +1,329 @@
+{
+  "overall": {
+    "n": 360633,
+    "positives": 50596,
+    "prevalence": 0.14029775422659602,
+    "roc_auc": 0.7459143174399996,
+    "pr_auc": 0.3319720967793059,
+    "brier": 0.10774392842564175,
+    "log_loss": 0.3568185227774325,
+    "sensitivity_at_specificity_0_8": 0.5222744881018262,
+    "threshold": 0.10402,
+    "sensitivity": 0.7925132421535299,
+    "specificity": 0.5613781580908085,
+    "ppv": 0.22771698081062203,
+    "npv": 0.9431144538489049,
+    "f1": 0.3537803893542965,
+    "confusion": {
+      "tp": 40098,
+      "fp": 135989,
+      "tn": 174048,
+      "fn": 10498
+    },
+    "calibration_slope": 0.9964965951552367,
+    "calibration_intercept": -0.0043284796083114165,
+    "ece": 0.001099,
+    "confidence_intervals": {
+      "roc_auc": {
+        "point": 0.7459143174399996,
+        "low": 0.743113821311471,
+        "high": 0.7488757343336258
+      },
+      "pr_auc": {
+        "point": 0.3319720967793059,
+        "low": 0.3262203874012441,
+        "high": 0.33766119636864156
+      },
+      "brier": {
+        "point": 0.10774392842564175,
+        "low": 0.10644343361478079,
+        "high": 0.10904709476277492
+      }
+    },
+    "weighted": {
+      "n": 360633,
+      "positives": 50596,
+      "prevalence": 0.1543208687900054,
+      "roc_auc": 0.7470742981353775,
+      "pr_auc": 0.3595264678253042,
+      "brier": 0.11550543545088908,
+      "log_loss": 0.3774063442839161,
+      "sensitivity_at_specificity_0_8": 0.5305392477934268,
+      "threshold": 0.10402,
+      "sensitivity": 0.7903746797497029,
+      "specificity": 0.563390278901443,
+      "ppv": 0.24831138672724254,
+      "npv": 0.936419507415909,
+      "f1": 0.3778986531097461,
+      "confusion": {
+        "tp": 40098,
+        "fp": 135989,
+        "tn": 174048,
+        "fn": 10498
+      },
+      "calibration_slope": 0.9763679647595787,
+      "calibration_intercept": 0.05625238071312895,
+      "ece": 0.010482
+    }
+  },
+  "model_selection": {
+    "selected_family": "lightgbm",
+    "selected_params": {},
+    "trials": [
+      {
+        "family": "prevalence",
+        "params": {},
+        "mean_pr_auc": 0.14012859900763552,
+        "mean_brier": 0.12049290359918596,
+        "mean_log_loss": 0.4051982256526516,
+        "selected": false
+      },
+      {
+        "family": "logistic",
+        "params": {},
+        "mean_pr_auc": 0.31015272330407384,
+        "mean_brier": 0.20622866337477194,
+        "mean_log_loss": 0.6056084420203568,
+        "selected": false
+      },
+      {
+        "family": "lightgbm",
+        "params": {},
+        "mean_pr_auc": 0.3355961419993293,
+        "mean_brier": 0.20511009037681668,
+        "mean_log_loss": 0.5949617698795603,
+        "selected": true
+      }
+    ],
+    "category_levels": {}
+  },
+  "calibration": {
+    "selected": "isotonic",
+    "uncalibrated_brier": 0.20511136230776844,
+    "uncalibrated_log_loss": 0.5949645104914941,
+    "selected_brier": 0.10755930723368531,
+    "selected_log_loss": 0.3562356277004047,
+    "method_reports": {
+      "isotonic": {
+        "brier": 0.10755930723368531,
+        "log_loss": 0.3562356277004047
+      },
+      "platt": {
+        "brier": 0.10759104029727352,
+        "log_loss": 0.3563444516919569
+      }
+    }
+  },
+  "threshold_selection": {
+    "threshold": 0.10402,
+    "target_sensitivity": 0.8,
+    "sensitivity": 0.807951,
+    "specificity": 0.542656,
+    "ppv": 0.22354,
+    "npv": 0.945471,
+    "f1": 0.350191,
+    "confusion": {
+      "tp": 163606,
+      "fp": 568282,
+      "tn": 674287,
+      "fn": 38889
+    }
+  },
+  "split": {
+    "rows": 1805697,
+    "clusters": 30124,
+    "households": 614630,
+    "test": {
+      "rows": 360633,
+      "clusters": 6034,
+      "households": 122891,
+      "positives": 50596,
+      "prevalence": 0.140298,
+      "female": 192409,
+      "male": 168224,
+      "female_share": 0.533531
+    },
+    "development": {
+      "rows": 1445064,
+      "clusters": 24090,
+      "households": 491739,
+      "positives": 202495,
+      "prevalence": 0.140129,
+      "female": 768470,
+      "male": 676594,
+      "female_share": 0.53179
+    },
+    "folds": [
+      {
+        "rows": 288823,
+        "clusters": 4841,
+        "households": 98546,
+        "positives": 40806,
+        "prevalence": 0.141284,
+        "female": 153918,
+        "male": 134905,
+        "female_share": 0.532915,
+        "fold": 1
+      },
+      {
+        "rows": 289225,
+        "clusters": 4820,
+        "households": 98574,
+        "positives": 40554,
+        "prevalence": 0.140216,
+        "female": 153712,
+        "male": 135513,
+        "female_share": 0.531462,
+        "fold": 2
+      },
+      {
+        "rows": 289150,
+        "clusters": 4805,
+        "households": 98204,
+        "positives": 40640,
+        "prevalence": 0.14055,
+        "female": 153872,
+        "male": 135278,
+        "female_share": 0.532153,
+        "fold": 3
+      },
+      {
+        "rows": 289951,
+        "clusters": 4827,
+        "households": 98577,
+        "positives": 40420,
+        "prevalence": 0.139403,
+        "female": 153703,
+        "male": 136248,
+        "female_share": 0.5301,
+        "fold": 4
+      },
+      {
+        "rows": 287915,
+        "clusters": 4797,
+        "households": 97838,
+        "positives": 40075,
+        "prevalence": 0.13919,
+        "female": 153265,
+        "male": 134650,
+        "female_share": 0.532327,
+        "fold": 5
+      }
+    ],
+    "age_15_49": {
+      "rows": 1290219,
+      "clusters": 30118,
+      "households": 544551,
+      "test": {
+        "rows": 257801,
+        "clusters": 6028,
+        "households": 108698,
+        "positives": 22582,
+        "prevalence": 0.087595,
+        "female": 139586,
+        "male": 118215,
+        "female_share": 0.541449
+      },
+      "development": {
+        "rows": 1032418,
+        "clusters": 24090,
+        "households": 435853,
+        "positives": 90316,
+        "prevalence": 0.08748,
+        "female": 557524,
+        "male": 474894,
+        "female_share": 0.540018
+      },
+      "folds": [
+        {
+          "rows": 206222,
+          "clusters": 4841,
+          "households": 87370,
+          "positives": 18172,
+          "prevalence": 0.088119,
+          "female": 111616,
+          "male": 94606,
+          "female_share": 0.541242,
+          "fold": 1
+        },
+        {
+          "rows": 206388,
+          "clusters": 4820,
+          "households": 87302,
+          "positives": 18238,
+          "prevalence": 0.088368,
+          "female": 111465,
+          "male": 94923,
+          "female_share": 0.540075,
+          "fold": 2
+        },
+        {
+          "rows": 206735,
+          "clusters": 4805,
+          "households": 87083,
+          "positives": 18085,
+          "prevalence": 0.087479,
+          "female": 111714,
+          "male": 95021,
+          "female_share": 0.540373,
+          "fold": 3
+        },
+        {
+          "rows": 206620,
+          "clusters": 4827,
+          "households": 87346,
+          "positives": 17889,
+          "prevalence": 0.086579,
+          "female": 111132,
+          "male": 95488,
+          "female_share": 0.537857,
+          "fold": 4
+        },
+        {
+          "rows": 206453,
+          "clusters": 4797,
+          "households": 86752,
+          "positives": 17932,
+          "prevalence": 0.086858,
+          "female": 111597,
+          "male": 94856,
+          "female_share": 0.540544,
+          "fold": 5
+        }
+      ],
+      "missing_folds": []
+    },
+    "leakage": {
+      "cluster_single_slot": true,
+      "household_single_slot": true
+    },
+    "split_source": "mixed"
+  },
+  "calibrator": "isotonic",
+  "secondary_target": {
+    "column": "target_fact_sheet",
+    "n": 360578,
+    "positives": 47338,
+    "prevalence": 0.13128366123279844,
+    "roc_auc": 0.751203433222514,
+    "pr_auc": 0.32108624596360713,
+    "brier": 0.10201687109426434,
+    "log_loss": 0.34107236554532305,
+    "sensitivity_at_specificity_0_8": 0.5334192403565846,
+    "threshold": 0.10402,
+    "sensitivity": 0.802463137437154,
+    "specificity": 0.5592261524709488,
+    "ppv": 0.21576779983527875,
+    "npv": 0.9493233905800361,
+    "f1": 0.34009122935812675,
+    "confusion": {
+      "tp": 37987,
+      "fp": 138068,
+      "tn": 175172,
+      "fn": 9351
+    },
+    "calibration_slope": 1.0203595768207347,
+    "calibration_intercept": -0.0536721199306644,
+    "ece": 0.008897
+  }
+}

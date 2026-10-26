@@ -14,6 +14,11 @@ artifacts/**/*.onnx
 artifacts/**/*.pkl
 artifacts/**/*.ubj
 
+# Respondent-level artifacts (local only; publish aggregates instead)
+artifacts/**/split_assignment.parquet
+artifacts/**/split_assignment.csv
+artifacts/**/shap_values.csv
+
 # Python
 __pycache__/
 *.py[cod]

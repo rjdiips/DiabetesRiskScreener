@@ -2,7 +2,7 @@
 
 A research and portfolio project that estimates the probability of elevated random blood glucose or diagnosed diabetes among Indian adults using NFHS-5 (2019-21).
 
-**Status:** data downloaded, audited, and harmonised IR/MR and PR feature tables built; shared model pipeline, PR sensitivity run, PR subgroup/fairness variant comparison, and primary-versus-PR comparison report implemented.
+**Status:** data downloaded, audited, and harmonised IR/MR and PR feature tables built; shared model pipeline, primary IR/MR reference run, PR 15+ and PR 15–49 sensitivity runs, PR subgroup/fairness variants, and the primary-versus-PR comparison report implemented; full real-data runs and publishable aggregate results in `artifacts/`.
 
 ## What this is
 
@@ -96,10 +96,12 @@ The PR model built on this table is a sensitivity analysis; the primary IR/MR mo
 
 ```powershell
 python scripts/build_pr_split.py
-python scripts/build_pr_split.py --primary-assignment artifacts/primary/split_assignment.parquet
+python scripts/build_pr_split.py --primary-assignment artifacts/primary/<run>/split_assignment.parquet
 ```
 
 This assigns a leakage-free cluster-grouped 20% test holdout and five development folds. Where a PR cluster appears in a primary split assignment, the PR rows reuse that cluster's split and fold; the remaining PR-only clusters are assigned deterministically with the same seed and stratification rule. The split source is recorded as `reused_primary`, `pr_only`, or `mixed`.
+
+For the published real-data comparison, the primary split was built first, then the PR partition was rebuilt with `--primary-assignment` so the three runs share one cluster partition where the recodes overlap. The full PR partition reports `split_source: mixed`.
 
 It writes:
 
@@ -108,19 +110,33 @@ It writes:
 
 The 15–49 comparison is the same partition filtered to younger respondents, not a re-split. The assignment is deterministic for a fixed seed.
 
+## Primary model run
+
+```powershell
+python scripts/run_primary_model.py
+python scripts/run_primary_model.py --smoke
+python scripts/run_primary_model.py --split-assignment artifacts/primary/<run>/split_assignment.parquet
+```
+
+This is the deployed IR/MR 15–49 reference model, run through the same shared `run_training_pipeline`. It uses the 32-feature default set (`PRIMARY_DEFAULT_FEATURES`), the `age_15_49` sample flag (774,861 rows, 64,526 positives), and cluster-grouped development/test splits. The default run generates and saves a split assignment; pass `--split-assignment` to reuse an existing partition. It writes the same artifact set as the PR runs under `artifacts/primary/`.
+
+The ICF-reported trade-off is explicit: the primary model has the richer feature set (anthropometry and diet) but covers adults 15–49 and is about 89% female; the PR models trade that feature richness for a much larger, more balanced sample that includes adults 50+.
+
 ## PR sensitivity model run
 
 ```powershell
 python scripts/run_pr_model.py --sample 15plus
 python scripts/run_pr_model.py --sample 15plus --smoke
 python scripts/run_pr_model.py --sample 15-49 --smoke --smoke-rows 2000
+python scripts/run_pr_model.py --sample 15plus --output artifacts/pr/runs
+python scripts/run_pr_model.py --sample 15-49 --output artifacts/pr/runs
 ```
 
 This is a thin wrapper around the shared `run_training_pipeline`; there is no second modeling implementation. The 15+ run uses the BP-valid sample of 1,805,697 adults (253,091 positives), the 12-feature default set (`female`, `age`, `urban`, `wealth`, `education`, `tobacco_any`, `alcohol_any`, `systolic_mean`, `diastolic_mean`, `bp_readings`, `bp_high`, `bp_medication`), and the saved PR split assignment. Calibration and the screening threshold are fitted independently on PR out-of-fold predictions.
 
 The `15-49` run is the age-matched comparison. It uses the feature builder's `age_15_49` flag as its sample filter, narrows the reported age bands to 15–24 … 45–49, and otherwise reuses the 15+ config: same feature set, same saved cluster partition filtered to 15–49 rows (no re-splitting), and its own calibration and threshold fitted on 15–49 out-of-fold predictions. The BP-valid 15–49 sample reconciles to 1,290,219 rows and 112,898 positives, and its run metadata and results report record `sample: age_15_49` and `comparison_run: pr_15plus_bp` so the two runs cannot be confused. `--no-split-assignment` is rejected for this sample, because a fresh partition would confound the comparison.
 
-Each run writes a timestamped directory under `artifacts/pr/` with:
+Each run writes a timestamped directory under `artifacts/pr/runs/` with:
 
 - the split assignment, resolved config, and run metadata (split source, seeds, package versions, dataset fingerprint, row counts);
 - overall metrics, subgroup metrics, the calibration curve, threshold analysis, feature importance, and the SHAP summary;
@@ -154,6 +170,35 @@ python scripts/run_pr_comparison.py `
 ```
 
 This reads the three finished run directories and writes `primary_vs_pr_comparison.json` and `primary_vs_pr_comparison.md` under `artifacts/pr/comparison/`. The report compares sample composition, feature sets, discrimination, calibration, operating thresholds, reliability curves, sex- and age-band-specific metrics, and subgroup gaps. It states that the PR 15–49 run isolates the feature-set trade-off while the PR 15+ run adds older adults, and it does not claim that one model is universally better. Raw probabilities are not compared across models because the samples and feature sets differ.
+
+## Verifying the sample counts
+
+```powershell
+python scripts/verify_pr_samples.py
+```
+
+This reads the local PR and IR/MR feature tables and checks the definition-of-done counts: the PR feature table (1,808,013 rows / 253,421 positives), the BP-valid 15+ sample (1,805,697 / 253,091), the BP-valid 15–49 sample (1,290,219 / 112,898), the BP-valid 50+ sample (515,478 / 140,193), and the primary 15–49 sample (774,861 / 64,526). It prints `pass` or `review` per check and exits non-zero on a mismatch.
+
+## Published real-data results
+
+The full real-data runs were executed on the local NFHS-5 tables with Python 3.14.6 and the pinned modeling stack. The primary run generated the cluster partition; the PR partition was rebuilt with `--primary-assignment` and records `split_source: mixed`. All three runs selected LightGBM and isotonic calibration.
+
+| Run | Rows | Test rows | Features | ROC-AUC | PR-AUC | Brier | ECE | Threshold | Sensitivity | Specificity | PPV | NPV |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Primary IR/MR 15–49 | 774,861 | 154,946 | 32 | 0.7099 | 0.2035 | 0.0721 | 0.0014 | 0.0549 | 0.8096 | 0.4558 | 0.1194 | 0.9633 |
+| PR 15–49 | 1,290,219 | 257,801 | 12 | 0.6979 | 0.1900 | 0.0761 | 0.0006 | 0.0599 | 0.7958 | 0.4708 | 0.1262 | 0.9600 |
+| PR 15+ | 1,805,697 | 360,633 | 12 | 0.7459 | 0.3320 | 0.1077 | 0.0011 | 0.1040 | 0.7925 | 0.5614 | 0.2277 | 0.9431 |
+
+Survey-weighted prevalence is 9.35% for the primary 15–49 run, 9.65% for PR 15–49, and 15.43% for PR 15+. The PR 15+ PR-AUC is higher partly because prevalence is higher in the extended sample; that is not evidence that the PR model is universally better.
+
+Published aggregates:
+
+- `artifacts/primary/primary_irmr_15to49_20261026T083448602742Z_42_4e9c2a9e/` — results report, model card, metrics, calibration/threshold tables, subgroup metrics, feature importance, SHAP summary and plot.
+- `artifacts/pr/runs/pr_15to49_bp_20261026T084051779902Z_42_96adb799/` — PR 15–49 age-matched run.
+- `artifacts/pr/runs/pr_15plus_bp_20261026T084255023166Z_42_2a9e78b6/` — PR 15+ run.
+- `artifacts/pr/comparison/primary_vs_pr_comparison.md` and `.json` — side-by-side comparison.
+
+The split assignments, per-respondent SHAP values, model bundles, and all raw/processed microdata remain local and gitignored.
 
 ## Disclaimer
 

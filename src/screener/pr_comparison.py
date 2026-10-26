@@ -526,6 +526,11 @@ def run_metric(
     return comparison["runs"][run_key]["metrics"][block].get(name)
 
 
+def run_field(comparison: Mapping[str, Any], run_key: str, name: str) -> Any:
+    """Return a run-level field such as the calibrator or selected family."""
+    return comparison["runs"][run_key]["metrics"].get(name)
+
+
 def _delta_block(runs: Mapping[str, dict], block: str) -> dict:
     return {
         "pr_15_49_vs_primary": _metric_deltas(
@@ -702,15 +707,15 @@ def _overall_table(comparison: Mapping[str, Any], *, weighted: bool = False) -> 
         lines.append("".join(cells))
     lines.append(
         "| Calibrator | "
-        f"{_format_plain(run_metric(comparison, 'primary', 'calibrator'))} | "
-        f"{_format_plain(run_metric(comparison, 'pr_15_49', 'calibrator'))} | "
-        f"{_format_plain(run_metric(comparison, 'pr_15_plus', 'calibrator'))} |"
+        f"{_format_plain(run_field(comparison, 'primary', 'calibrator'))} | "
+        f"{_format_plain(run_field(comparison, 'pr_15_49', 'calibrator'))} | "
+        f"{_format_plain(run_field(comparison, 'pr_15_plus', 'calibrator'))} |"
     )
     lines.append(
         "| Selected model | "
-        f"{_format_plain(run_metric(comparison, 'primary', 'selected_family'))} | "
-        f"{_format_plain(run_metric(comparison, 'pr_15_49', 'selected_family'))} | "
-        f"{_format_plain(run_metric(comparison, 'pr_15_plus', 'selected_family'))} |"
+        f"{_format_plain(run_field(comparison, 'primary', 'selected_family'))} | "
+        f"{_format_plain(run_field(comparison, 'pr_15_49', 'selected_family'))} | "
+        f"{_format_plain(run_field(comparison, 'pr_15_plus', 'selected_family'))} |"
     )
     return lines
 
@@ -1065,6 +1070,7 @@ __all__ = [
     "compare_primary_vs_pr",
     "load_run_result",
     "render_primary_vs_pr_report",
+    "run_field",
     "run_metric",
     "write_primary_vs_pr_report",
 ]
