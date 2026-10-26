@@ -181,7 +181,7 @@ This reads the local PR and IR/MR feature tables and checks the definition-of-do
 
 ## Published real-data results
 
-The full real-data runs were executed on the local NFHS-5 tables with Python 3.14.6 and the pinned modeling stack. The primary run generated the cluster partition; the PR partition was rebuilt with `--primary-assignment` and records `split_source: mixed`. All three runs selected LightGBM and isotonic calibration.
+The full real-data runs were executed on the local NFHS-5 tables with the pinned modeling stack. The stack targets Python 3.11 or 3.12 (see Setup); each run records the interpreter and package versions it actually used in its `run_metadata.json`. The primary run generated the cluster partition; the PR partition was rebuilt with `--primary-assignment` and records `split_source: mixed`. All three runs selected LightGBM and isotonic calibration.
 
 | Run | Rows | Test rows | Features | ROC-AUC | PR-AUC | Brier | ECE | Threshold | Sensitivity | Specificity | PPV | NPV |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
