@@ -28,6 +28,8 @@ from .reporting import format_delta, format_value, plain
 
 RUN_KEYS = ("primary", "pr_15_49", "pr_15_plus")
 
+PR_MODEL_CARD_ADDENDUM_NAME = "pr_sensitivity_model_card_addendum.md"
+
 RUN_LABELS = {
     "primary": "Primary IR/MR 15–49",
     "pr_15_49": "PR 15–49",
@@ -881,6 +883,12 @@ def render_primary_vs_pr_report(comparison: Mapping[str, Any]) -> str:
             "behaviour, and subgroup gaps."
         ),
         "",
+        (
+            f"See the [PR sensitivity model-card addendum]({PR_MODEL_CARD_ADDENDUM_NAME}) "
+            "for intended use, sample and feature differences, the age gradient, "
+            "label bias, and non-goals."
+        ),
+        "",
         "## What the three runs are",
         "",
         *[f"- {note}" for note in comparison["narrative"]],
@@ -976,17 +984,646 @@ def render_primary_vs_pr_report(comparison: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _percent(value: Any) -> str:
+    if not _is_number(value):
+        return "n/a"
+    return f"{100 * float(value):.2f}%"
+
+
+def _addendum_sample_table(comparison: Mapping[str, Any]) -> list[str]:
+    lines = [
+        (
+            "| Run | Sample | Rows used | Test rows | Test positives | "
+            "Prevalence | Weighted prevalence |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|",
+    ]
+    for row in comparison["sample_table"]:
+        lines.append(
+            f"| {row['label']} | {_format_plain(row['sample'])} | "
+            f"{_format_plain(row['rows_used'])} | "
+            f"{_format_plain(row['test_rows'])} | "
+            f"{_format_plain(row['test_positives'])} | "
+            f"{_format_plain(row['prevalence'])} | "
+            f"{_format_plain(row['weighted_prevalence'])} |"
+        )
+    return lines
+
+
+def _matching_row(rows: list[dict], **criteria: str) -> dict:
+    for row in rows:
+        if all(str(row.get(name)) == value for name, value in criteria.items()):
+            return row
+    return {}
+
+
+def _addendum_metric_table(comparison: Mapping[str, Any]) -> list[str]:
+    lines = [
+        "| Metric | PR 15–49 | PR 15+ |",
+        "|---|---:|---:|",
+    ]
+    for label, key in (
+        ("ROC-AUC", "roc_auc"),
+        ("PR-AUC", "pr_auc"),
+        ("Brier", "brier"),
+        ("Log loss", "log_loss"),
+        ("ECE", "ece"),
+        ("Calibration slope", "calibration_slope"),
+        ("Calibration intercept", "calibration_intercept"),
+    ):
+        lines.append(
+            f"| {label} | {format_value(run_metric(comparison, 'pr_15_49', key))} | "
+            f"{format_value(run_metric(comparison, 'pr_15_plus', key))} |"
+        )
+    lines.append(
+        "| Calibrator | "
+        f"{_format_plain(run_field(comparison, 'pr_15_49', 'calibrator'))} | "
+        f"{_format_plain(run_field(comparison, 'pr_15_plus', 'calibrator'))} |"
+    )
+    return lines
+
+
+def _addendum_weighted_table(comparison: Mapping[str, Any]) -> list[str]:
+    lines = [
+        "| Survey-weighted metric | PR 15–49 | PR 15+ |",
+        "|---|---:|---:|",
+    ]
+    for label, key in (
+        ("Prevalence", "prevalence"),
+        ("ROC-AUC", "roc_auc"),
+        ("PR-AUC", "pr_auc"),
+        ("Brier", "brier"),
+        ("ECE", "ece"),
+        ("Sensitivity", "sensitivity"),
+        ("Specificity", "specificity"),
+        ("PPV", "ppv"),
+        ("NPV", "npv"),
+    ):
+        lines.append(
+            f"| {label} | "
+            f"{format_value(run_metric(comparison, 'pr_15_49', key, weighted=True))} | "
+            f"{format_value(run_metric(comparison, 'pr_15_plus', key, weighted=True))} |"
+        )
+    return lines
+
+
+def _addendum_threshold_table(comparison: Mapping[str, Any]) -> list[str]:
+    lines = [
+        (
+            "| Run | Threshold | Sensitivity | Specificity | PPV | NPV | F1 | "
+            "Sensitivity @ 80% specificity |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for key in ("pr_15_49", "pr_15_plus"):
+        lines.append(
+            f"| {RUN_LABELS[key]} | "
+            f"{format_value(run_metric(comparison, key, 'threshold'))} | "
+            f"{format_value(run_metric(comparison, key, 'sensitivity'))} | "
+            f"{format_value(run_metric(comparison, key, 'specificity'))} | "
+            f"{format_value(run_metric(comparison, key, 'ppv'))} | "
+            f"{format_value(run_metric(comparison, key, 'npv'))} | "
+            f"{format_value(run_metric(comparison, key, 'f1'))} | "
+            f"{format_value(run_metric(comparison, key, 'sensitivity_at_specificity_0_8'))} |"
+        )
+    return lines
+
+
+def _addendum_age_table(comparison: Mapping[str, Any]) -> list[str]:
+    rows = comparison["age_band_metrics"]["pr_15_plus"]
+    lines = [
+        (
+            "| Age band | n | Positives | Prevalence | ROC-AUC | PR-AUC | "
+            "Sensitivity at threshold | Δ ROC-AUC vs overall |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    if not rows:
+        lines.append("| n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
+        return lines
+    for row in rows:
+        lines.append(
+            f"| {_format_plain(row.get('group'))} | "
+            f"{format_value(row.get('n'))} | "
+            f"{format_value(row.get('positives'))} | "
+            f"{_percent(row.get('prevalence'))} | "
+            f"{format_value(row.get('roc_auc'))} | "
+            f"{format_value(row.get('pr_auc'))} | "
+            f"{format_value(row.get('sensitivity'))} | "
+            f"{format_delta(row.get('gap_roc_auc'))} |"
+        )
+    return lines
+
+
+def _state_extremes(rows: list[dict]) -> tuple[dict, dict]:
+    states = [
+        row
+        for row in rows
+        if str(row.get("subgroup")) == "state"
+        and row.get("reliable")
+        and _is_number(row.get("gap_roc_auc"))
+    ]
+    if not states:
+        return {}, {}
+    return (
+        min(states, key=lambda item: item["gap_roc_auc"]),
+        max(states, key=lambda item: item["gap_roc_auc"]),
+    )
+
+
+def _addendum_gap_table(comparison: Mapping[str, Any]) -> list[str]:
+    rows = comparison["subgroup_gaps"]["pr_15_plus"]
+    wanted = (
+        ("sex", "female"),
+        ("sex", "male"),
+        ("wealth", "1"),
+        ("wealth", "5"),
+        ("residence", "rural"),
+        ("residence", "urban"),
+        ("education", "0"),
+        ("education", "3"),
+    )
+    selected: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for subgroup, group in wanted:
+        row = _matching_row(rows, subgroup=subgroup, group=group)
+        if row:
+            key = (str(row.get("subgroup")), str(row.get("group")))
+            if key not in seen:
+                seen.add(key)
+                selected.append(row)
+
+    low_state, high_state = _state_extremes(rows)
+    for row in (low_state, high_state):
+        if not row:
+            continue
+        key = (str(row.get("subgroup")), str(row.get("group")))
+        if key not in seen:
+            seen.add(key)
+            selected.append(row)
+
+    lines = [
+        (
+            "| Subgroup | Group | n | Positives | Prevalence | ROC-AUC | "
+            "Sensitivity | Δ ROC-AUC | Δ Sensitivity | Reliable |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|:---:|",
+    ]
+    if not selected:
+        lines.append(
+            "| n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"
+        )
+        return lines
+    for row in selected:
+        lines.append(
+            f"| {_format_plain(row.get('subgroup'))} | "
+            f"{_format_plain(row.get('group'))} | "
+            f"{format_value(row.get('n'))} | "
+            f"{format_value(row.get('positives'))} | "
+            f"{_percent(row.get('prevalence'))} | "
+            f"{format_value(row.get('roc_auc'))} | "
+            f"{format_value(row.get('sensitivity'))} | "
+            f"{format_delta(row.get('gap_roc_auc'))} | "
+            f"{format_delta(row.get('gap_sensitivity'))} | "
+            f"{'yes' if row.get('reliable') else 'no'} |"
+        )
+    return lines
+
+
+def _curve_rows_above(
+    comparison: Mapping[str, Any],
+    key: str,
+    cutoff: float,
+) -> int:
+    total = 0
+    for row in comparison["reliability_curves"].get(key) or []:
+        lower = row.get("bin_lower")
+        count = row.get("count")
+        if (
+            _is_number(lower)
+            and _is_number(count)
+            and float(lower) >= cutoff
+        ):
+            total += int(count)
+    return total
+
+
+def render_pr_model_card_addendum(
+    comparison: Mapping[str, Any],
+    *,
+    comparison_report_name: str = "primary_vs_pr_comparison.md",
+) -> str:
+    """Render the PR sensitivity model-card addendum from a comparison."""
+    runs = comparison["runs"]
+    pr_15_49 = runs["pr_15_49"]
+    pr_15_plus = runs["pr_15_plus"]
+    age_rows = comparison["age_band_metrics"]["pr_15_plus"]
+    sex_rows = comparison["sex_metrics"]["pr_15_plus"]
+    gaps = comparison["subgroup_gaps"]["pr_15_plus"]
+
+    first_age = age_rows[0] if age_rows else {}
+    last_age = age_rows[-1] if age_rows else {}
+    youngest = _matching_row(age_rows, group="15-24")
+    oldest = _matching_row(age_rows, group="70+")
+    roc_values = [
+        float(row["roc_auc"]) for row in age_rows if _is_number(row.get("roc_auc"))
+    ]
+    older_rows = [
+        row
+        for row in age_rows
+        if str(row.get("group")) in {"50-59", "60-69", "70+"}
+    ]
+    older_test_rows = sum(
+        int(row["n"]) for row in older_rows if _is_number(row.get("n"))
+    )
+    total_age_rows = sum(int(row["n"]) for row in age_rows if _is_number(row.get("n")))
+    older_share = older_test_rows / total_age_rows if total_age_rows else None
+    older_prevalence_low = _percent(older_rows[0].get("prevalence")) if older_rows else "n/a"
+    older_prevalence_high = (
+        _percent(older_rows[-1].get("prevalence")) if older_rows else "n/a"
+    )
+
+    female = _matching_row(sex_rows, group="female")
+    male = _matching_row(sex_rows, group="male")
+    wealth_1 = _matching_row(gaps, subgroup="wealth", group="1")
+    wealth_5 = _matching_row(gaps, subgroup="wealth", group="5")
+    education_0 = _matching_row(gaps, subgroup="education", group="0")
+    education_3 = _matching_row(gaps, subgroup="education", group="3")
+    unreliable = [row for row in gaps if not row.get("reliable")]
+    low_state, high_state = _state_extremes(gaps)
+
+    pr_feature_list = _feature_list(pr_15_plus["feature_columns"])
+    primary_feature_count = runs["primary"]["feature_count"]
+    pr_feature_count = pr_15_plus["feature_count"]
+
+    lines = [
+        "# Model-card addendum: PR BP-based sensitivity model",
+        "",
+        (
+            "This addendum documents the PR 15+ and PR 15–49 BP-based sensitivity "
+            "models. It supplements the per-run model cards and the "
+            f"[primary-versus-PR comparison report]({comparison_report_name}). "
+            "It is written from published aggregate results and can be shared "
+            "without distributing NFHS-5 microdata."
+        ),
+        "",
+        (
+            f"- **PR 15+ run:** `{_format_plain(pr_15_plus.get('run_id'))}` "
+            f"(sample `{_format_plain(pr_15_plus.get('sample'))}`)."
+        ),
+        (
+            f"- **PR 15–49 run:** `{_format_plain(pr_15_49.get('run_id'))}` "
+            f"(sample `{_format_plain(pr_15_49.get('sample'))}`)."
+        ),
+        (
+            f"- **Primary reference run:** `{_format_plain(runs['primary'].get('run_id'))}` "
+            "(the deployed IR/MR 15–49 model)."
+        ),
+        "",
+        (
+            "**Status.** The PR model is a sensitivity analysis: it is not the "
+            "deployed model and not the deployed screener. The primary IR/MR "
+            "15–49 model remains the model intended for the app. The PR model is "
+            "not a clinical diagnostic tool and must not be used to diagnose, "
+            "treat, or allocate care."
+        ),
+        "",
+        "## Intended use",
+        "",
+        (
+            "The model estimates the probability that an adult has elevated random "
+            "blood glucose or diagnosed or treated diabetes at the time of the "
+            "NFHS-5 survey. The target is glucose > 140 mg/dL OR a self-reported "
+            "high-glucose diagnosis OR current glucose-lowering medication. Random "
+            "blood glucose is a screening indicator, not a diagnosis."
+        ),
+        "",
+        (
+            "Its purpose is research and portfolio analysis: to test whether a "
+            "12-feature blood-pressure and demographic model can rank diabetes risk "
+            "across the larger PR sample, and to show what changes when the sample "
+            "extends to older adults and the primary model's richer feature set is "
+            "reduced."
+        ),
+        "",
+        (
+            "It is not intended for individual clinical decisions, clinical "
+            "triage, insurance, employment, care allocation, or population "
+            "prevalence estimation. It does not predict future diabetes."
+        ),
+        "",
+        "## Sample and feature differences",
+        "",
+        *_addendum_sample_table(comparison),
+        "",
+        (
+            f"- The PR sample extends to adults 50+. In the PR 15+ test set, "
+            f"ages 50+ contribute {older_test_rows:,} of {total_age_rows:,} rows "
+            f"({_percent(older_share)}), with prevalence between "
+            f"{older_prevalence_low} and {older_prevalence_high}. That extension "
+            "explains most of the difference between the PR 15+ and PR 15–49 "
+            "prevalences."
+        ),
+        (
+            "- 183 respondents coded as transgender (sex code 3) were excluded, "
+            "because the NFHS-5 audit sample and the primary model use sex codes 1 "
+            "and 2. The PR model is therefore defined only for respondents coded "
+            "male or female."
+        ),
+        (
+            "- The PR model uses only rows with a valid systolic/diastolic pair. "
+            "Rows without a valid pair remain in the local PR feature table but "
+            "cannot be scored by the BP model."
+        ),
+        (
+            f"- The primary model uses {primary_feature_count} features; the PR "
+            f"model uses {pr_feature_count}: {pr_feature_list}. The PR model does "
+            "not use anthropometry or diet."
+        ),
+        (
+            "- The PR model also excludes state, religion, social group, marital "
+            "status, children ever born, the smoking/smokeless split, alcohol "
+            "frequency, and cooking fuel. Anthropometry is measured only for "
+            "younger adults in the PR file, so using it would make missingness age- "
+            "and sex-dependent."
+        ),
+        (
+            f"- On the age-matched comparison, the primary 32-feature model has "
+            f"ROC-AUC {format_value(run_metric(comparison, 'primary', 'roc_auc'))} "
+            f"and PR-AUC {format_value(run_metric(comparison, 'primary', 'pr_auc'))}, "
+            f"versus ROC-AUC {format_value(run_metric(comparison, 'pr_15_49', 'roc_auc'))} "
+            f"and PR-AUC {format_value(run_metric(comparison, 'pr_15_49', 'pr_auc'))} "
+            "for the 12-feature PR 15–49 model. This is descriptive, not a pure "
+            "ablation: the PR and IR/MR instruments measure different concepts."
+        ),
+        (
+            "- PR religion and social group describe the household head, not "
+            "necessarily the respondent. They are excluded from the default PR "
+            "model; the spec's fairness variant is the mechanism for auditing them, "
+            "and no fairness-variant result is claimed here. A subgroup gap in "
+            "those variables cannot be read as a respondent-level disparity."
+        ),
+        (
+            "- The PR 15–49 and PR 15+ runs use the same 12 features, the same "
+            "cluster-grouped partition, and the same modelling logic. The 15–49 "
+            "run filters the parent partition rather than re-splitting, so the "
+            "difference between the two PR runs isolates the sample extension. The "
+            "primary comparison is not a pure feature ablation, because the IR/MR "
+            "and PR instruments measure different concepts."
+        ),
+        "",
+        "## Age gradient",
+        "",
+        *_addendum_age_table(comparison),
+        "",
+        (
+            f"Prevalence rises from {_percent(first_age.get('prevalence'))} in "
+            f"ages {_format_plain(first_age.get('group'))} to "
+            f"{_percent(last_age.get('prevalence'))} in ages "
+            f"{_format_plain(last_age.get('group'))}. Adults aged 50+ contribute "
+            f"{older_test_rows:,} of {total_age_rows:,} PR 15+ test rows "
+            f"({_percent(older_share)}). Age-band ROC-AUC ranges from "
+            f"{format_value(min(roc_values) if roc_values else None)} to "
+            f"{format_value(max(roc_values) if roc_values else None)}."
+        ),
+        "",
+        (
+            f"At the selected threshold, sensitivity is "
+            f"{format_value(youngest.get('sensitivity'))} in ages 15–24, "
+            f"{format_value(oldest.get('sensitivity'))} in ages 70+, and higher "
+            "across the older bands. Because the operating point is tuned to "
+            "overall sensitivity, it mostly flags older adults and leaves the "
+            "youngest band almost unflagged. Discrimination within age bands is "
+            "modest, which is why a younger screening population would need its "
+            "own calibration and threshold rather than reuse of the PR 15+ "
+            "threshold."
+        ),
+        "",
+        "## Calibration",
+        "",
+        *_addendum_metric_table(comparison),
+        "",
+        (
+            "Both runs selected the calibrator shown in the table on out-of-fold "
+            "predictions; in the published runs this is isotonic. Test ECE is close "
+            "to zero in both runs, and the calibration slopes are close to one. "
+            "Brier and log loss are lower in the PR 15–49 run largely because "
+            "prevalence is lower there; they are not direct evidence that one model "
+            "has better probability quality."
+        ),
+        "",
+        *_addendum_weighted_table(comparison),
+        "",
+        (
+            "Survey-weighted metrics use the NFHS-5 survey weight. Training is "
+            "unweighted; the weighted block is an evaluation view, not a different "
+            "model."
+        ),
+        "",
+        (
+            f"Reliability above 0.70 predicted risk is sparsely supported: "
+            f"{_curve_rows_above(comparison, 'pr_15_plus', 0.70)} PR 15+ test rows "
+            f"and {_curve_rows_above(comparison, 'pr_15_49', 0.70)} PR 15–49 test "
+            "rows fall in those bins. The high-risk tail therefore cannot support "
+            "a precise calibration claim even though overall ECE is small."
+        ),
+        "",
+        "## Threshold",
+        "",
+        *_addendum_threshold_table(comparison),
+        "",
+        (
+            "Each run selects its own referral threshold on its own out-of-fold "
+            "predictions, targeting at least 80% sensitivity. The PR 15+ threshold "
+            f"is {format_value(run_metric(comparison, 'pr_15_plus', 'threshold'))}; "
+            f"the PR 15–49 threshold is "
+            f"{format_value(run_metric(comparison, 'pr_15_49', 'threshold'))}. "
+            "These are policy choices, not intrinsic model properties."
+        ),
+        "",
+        (
+            "Threshold performance depends on prevalence. A threshold and its PPV "
+            "or NPV cannot be transported to another age structure, state, or "
+            "clinical setting without recalibration and a new threshold decision. "
+            "At 80% specificity, sensitivity is "
+            f"{format_value(run_metric(comparison, 'pr_15_49', 'sensitivity_at_specificity_0_8'))} "
+            "for PR 15–49 and "
+            f"{format_value(run_metric(comparison, 'pr_15_plus', 'sensitivity_at_specificity_0_8'))} "
+            "for PR 15+; this higher-specificity operating point is more demanding "
+            "than the 80%-sensitivity threshold."
+        ),
+        "",
+        "## Subgroup gaps",
+        "",
+        *_addendum_gap_table(comparison),
+        "",
+        (
+            f"Sex: female prevalence is {_percent(female.get('prevalence'))} "
+            f"versus male {_percent(male.get('prevalence'))}; sensitivity at the "
+            f"chosen threshold is {format_value(female.get('sensitivity'))} versus "
+            f"{format_value(male.get('sensitivity'))}. The model under-flags women "
+            "relative to men in the PR 15+ run even though sex is a model feature."
+        ),
+        "",
+        (
+            f"Wealth: prevalence rises from {_percent(wealth_1.get('prevalence'))} "
+            f"in quintile 1 to {_percent(wealth_5.get('prevalence'))} in quintile 5, "
+            f"and the sensitivity gap moves from "
+            f"{format_delta(wealth_1.get('gap_sensitivity'))} to "
+            f"{format_delta(wealth_5.get('gap_sensitivity'))}. Education shows a "
+            f"similar pattern: prevalence is {_percent(education_0.get('prevalence'))} "
+            f"in the lowest education group and "
+            f"{_percent(education_3.get('prevalence'))} in the highest, while the "
+            f"sensitivity gap moves from {format_delta(education_0.get('gap_sensitivity'))} "
+            f"to {format_delta(education_3.get('gap_sensitivity'))}."
+        ),
+        "",
+        (
+            f"State differences in discrimination are wide: the ROC-AUC gap ranges "
+            f"from {format_delta(low_state.get('gap_roc_auc'))} in one reliable "
+            f"state (prevalence {_percent(low_state.get('prevalence'))}) to "
+            f"{format_delta(high_state.get('gap_roc_auc'))} in another "
+            f"(prevalence {_percent(high_state.get('prevalence'))}). State rows "
+            "appear only where the test set has at least 500 respondents; the codes "
+            "are raw NFHS state codes."
+        ),
+        "",
+        (
+            "Subgroups with fewer than 200 respondents or fewer than 50 positives "
+            "are flagged unreliable. "
+            + (
+                f"{len(unreliable)} PR 15+ subgroup "
+                f"{'row is' if len(unreliable) == 1 else 'rows are'} flagged that "
+                "way and must not be used to claim fairness."
+                if unreliable
+                else "No PR 15+ subgroup row was flagged in this run."
+            )
+        ),
+        "",
+        (
+            "Gaps are descriptive, not causal. Excluding a protected attribute does "
+            "not by itself make a model fair; the fairness variant exists to measure "
+            "what including religion and social group changes, and the household-head "
+            "wording limits that audit."
+        ),
+        "",
+        "## Label bias",
+        "",
+        (
+            "- The target includes self-reported diagnosis and medication. Both "
+            "depend on prior testing and access to care, so the model can learn "
+            "access-to-care patterns as well as disease risk."
+        ),
+        (
+            "- Random glucose is a single survey measurement, not a fasting "
+            "glucose, oral glucose tolerance test, or HbA1c. A value at or below "
+            "140 mg/dL does not rule out diabetes, and a transient high value can "
+            "be labelled positive."
+        ),
+        (
+            "- Undiagnosed diabetes with a non-elevated random glucose is counted "
+            "as negative. Prevalence and subgroup gaps therefore reflect both "
+            "disease and diagnosis opportunity."
+        ),
+        (
+            "- Wealth, residence, education, and state gaps are especially "
+            "vulnerable to this label bias: richer or urban respondents may be more "
+            "likely to have been tested and diagnosed. The model's use of wealth "
+            "and education can reproduce that pathway."
+        ),
+        (
+            "- The NFHS-5 fact-sheet target (glucose > 140 OR medication, without "
+            "the diagnosis item) is reported separately in each run. The primary "
+            "target here is slightly broader, so its prevalence is not identical "
+            "to the published NFHS-5 fact-sheet prevalence."
+        ),
+        (
+            "- The survey is from 2019–21. There is no external validation, no "
+            "NFHS-6 replication, and no clinical validation."
+        ),
+        "",
+        "## Limitations",
+        "",
+        *[f"- {note}" for note in comparison["limitations"]],
+        (
+            "- The PR model omits anthropometry, diet, marital status, children "
+            "ever born, the smoking/smokeless split, alcohol frequency, and "
+            "cooking fuel. Those omissions are deliberate, but they mean the model "
+            "cannot show how much those concepts would add."
+        ),
+        (
+            "- PR adults without a valid blood-pressure pair are excluded from "
+            "the BP model. They remain in the feature table, but the model cannot "
+            "score them without a BP reading."
+        ),
+        (
+            "- High-risk calibration is sparse, and the evaluation is one "
+            "cluster-grouped holdout with one seed and five development folds, not "
+            "external validation."
+        ),
+        (
+            "- 183 transgender respondents are not represented, and sex is encoded "
+            "only as male or female. The model must not be presented as covering "
+            "all adults."
+        ),
+        (
+            "- Religion and social group describe the household head. Any audit "
+            "using them is a household-level proxy, not a respondent-level "
+            "attribute."
+        ),
+        (
+            "- Subgroup gaps are descriptive and not causal. No fairness "
+            "mitigation, reweighting, or adversarial debiasing was applied."
+        ),
+        "",
+        "## Non-goals",
+        "",
+        "- A deployed PR model, a PR model in the API or demo, or a replacement for the primary screener.",
+        "- A clinical diagnostic tool, a diagnostic test, or a triage tool.",
+        "- Prediction of future diabetes, incident diabetes, or complications.",
+        "- Insurance, employment, care-allocation, or other high-stakes decisions.",
+        "- Population prevalence estimation, district or small-area estimates, or policy targeting.",
+        "- External validation, NFHS-6 replication, clinical validation, or causal inference.",
+        "- A PR anthropometry model, a PR diet model, or a questionnaire-only model.",
+        "- Fairness mitigation, model compression, ONNX export, or mobile deployment.",
+        "",
+        "## Publication",
+        "",
+        (
+            "This addendum contains only aggregate counts, metrics, and run "
+            "identifiers from the published runs. It contains no respondent "
+            "records, no split assignments, no per-respondent SHAP values, and no "
+            "model binaries. Raw and processed NFHS-5 microdata are not "
+            "redistributed."
+        ),
+        "",
+        "## Citation",
+        "",
+        (
+            "International Institute for Population Sciences (IIPS) and ICF. 2021. "
+            "*National Family Health Survey (NFHS-5), 2019-21: India*. Mumbai: IIPS."
+        ),
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def write_primary_vs_pr_report(
     comparison: Mapping[str, Any],
     output_dir: str | Path,
     *,
     stem: str = "primary_vs_pr_comparison",
 ) -> dict[str, Path]:
-    """Write the structured JSON and the readable Markdown report."""
+    """Write the comparison JSON/Markdown and the model-card addendum."""
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     json_path = directory / f"{stem}.json"
     markdown_path = directory / f"{stem}.md"
+    addendum_path = directory / PR_MODEL_CARD_ADDENDUM_NAME
     json_path.write_text(
         json.dumps(plain(comparison), indent=2, allow_nan=False),
         encoding="utf-8",
@@ -995,7 +1632,18 @@ def write_primary_vs_pr_report(
         render_primary_vs_pr_report(comparison),
         encoding="utf-8",
     )
-    return {"json": json_path, "markdown": markdown_path}
+    addendum_path.write_text(
+        render_pr_model_card_addendum(
+            comparison,
+            comparison_report_name=f"{stem}.md",
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "json": json_path,
+        "markdown": markdown_path,
+        "model_card_addendum": addendum_path,
+    }
 
 
 def _read_json(path: Path) -> dict:
@@ -1065,10 +1713,12 @@ def load_run_result(run_dir: str | Path) -> TrainingResult:
 __all__ = [
     "COMPARISON_METRICS",
     "DELTA_METRICS",
+    "PR_MODEL_CARD_ADDENDUM_NAME",
     "RUN_KEYS",
     "RUN_LABELS",
     "compare_primary_vs_pr",
     "load_run_result",
+    "render_pr_model_card_addendum",
     "render_primary_vs_pr_report",
     "run_field",
     "run_metric",

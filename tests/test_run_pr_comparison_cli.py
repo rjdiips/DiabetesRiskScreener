@@ -69,8 +69,10 @@ def test_cli_writes_the_primary_vs_pr_comparison(tmp_path):
     assert exit_code == 0
     json_path = tmp_path / "out" / "primary_vs_pr_comparison.json"
     markdown_path = tmp_path / "out" / "primary_vs_pr_comparison.md"
+    addendum_path = tmp_path / "out" / "pr_sensitivity_model_card_addendum.md"
     assert json_path.exists()
     assert markdown_path.exists()
+    assert addendum_path.exists()
 
     comparison = json.loads(json_path.read_text(encoding="utf-8"))
     assert list(comparison["runs"]) == ["primary", "pr_15_49", "pr_15_plus"]
@@ -81,6 +83,11 @@ def test_cli_writes_the_primary_vs_pr_comparison(tmp_path):
     report = markdown_path.read_text(encoding="utf-8")
     assert "## Sample differences" in report
     assert "## Limitations" in report
+    assert "(pr_sensitivity_model_card_addendum.md)" in report
+
+    addendum = addendum_path.read_text(encoding="utf-8")
+    assert "# Model-card addendum" in addendum
+    assert "not the deployed screener" in addendum
 
 
 def test_cli_reports_a_missing_run_directory(tmp_path, capsys):

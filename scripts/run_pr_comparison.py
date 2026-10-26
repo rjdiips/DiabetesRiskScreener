@@ -12,7 +12,9 @@ Run from the project root:
         --pr-15-plus artifacts/pr/runs/<run>
 
 Outputs default to ``artifacts/pr/comparison/``. The comparison is written as
-``primary_vs_pr_comparison.json`` and ``primary_vs_pr_comparison.md``.
+``primary_vs_pr_comparison.json`` and ``primary_vs_pr_comparison.md``, and the
+PR sensitivity model-card addendum as
+``pr_sensitivity_model_card_addendum.md``.
 """
 
 from __future__ import annotations
@@ -88,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = {
         "comparison_json": str(paths["json"]),
         "comparison_markdown": str(paths["markdown"]),
+        "model_card_addendum": str(paths["model_card_addendum"]),
         "runs": {
             key: {
                 "run_id": comparison["runs"][key]["run_id"],

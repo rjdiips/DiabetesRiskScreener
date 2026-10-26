@@ -10,9 +10,11 @@ import pytest
 from screener.feature_policy import PR_15_PLUS_FEATURES, PRIMARY_DEFAULT_FEATURES
 from screener.pipeline import TrainingConfig, TrainingResult
 from screener.pr_comparison import (
+    PR_MODEL_CARD_ADDENDUM_NAME,
     RUN_KEYS,
     compare_primary_vs_pr,
     load_run_result,
+    render_pr_model_card_addendum,
     render_primary_vs_pr_report,
     run_metric,
     write_primary_vs_pr_report,
@@ -353,16 +355,73 @@ def test_report_states_sample_and_feature_differences_without_declaring_a_winner
     assert "female share" in report.lower()
 
 
-def test_write_primary_vs_pr_report_writes_json_and_markdown(tmp_path):
+def test_model_card_addendum_covers_required_sections_and_statements():
+    comparison = compare_primary_vs_pr(*_three_runs())
+
+    addendum = render_pr_model_card_addendum(comparison)
+
+    for heading in (
+        "## Intended use",
+        "## Sample and feature differences",
+        "## Age gradient",
+        "## Calibration",
+        "## Threshold",
+        "## Subgroup gaps",
+        "## Label bias",
+        "## Limitations",
+        "## Non-goals",
+        "## Publication",
+    ):
+        assert heading in addendum
+
+    assert "not the deployed screener" in addendum
+    assert "not a clinical diagnostic tool" in addendum
+    assert "household head" in addendum
+    assert "183" in addendum
+    assert "transgender" in addendum
+    assert "does not use anthropometry or diet" in addendum
+
+    # Metrics and sample rows come from the run results, not placeholders.
+    assert "0.8200" in addendum
+    assert "0.7800" in addendum
+    assert "0.1400" in addendum
+    assert "0.1200" in addendum
+    assert "5000" in addendum
+    assert "1,808,013" not in addendum
+
+    assert "split_assignment.parquet" not in addendum
+    assert "shap_values.csv" not in addendum
+    assert "model_bundle.joblib" not in addendum
+
+
+def test_comparison_report_links_the_model_card_addendum():
+    comparison = compare_primary_vs_pr(*_three_runs())
+
+    report = render_primary_vs_pr_report(comparison)
+
+    assert (
+        f"[PR sensitivity model-card addendum]({PR_MODEL_CARD_ADDENDUM_NAME})"
+        in report
+    )
+
+
+def test_write_primary_vs_pr_report_writes_json_markdown_and_addendum(tmp_path):
     comparison = compare_primary_vs_pr(*_three_runs())
 
     paths = write_primary_vs_pr_report(comparison, tmp_path, stem="comparison")
 
     assert paths["json"] == tmp_path / "comparison.json"
     assert paths["markdown"] == tmp_path / "comparison.md"
+    assert paths["model_card_addendum"] == tmp_path / PR_MODEL_CARD_ADDENDUM_NAME
     payload = json.loads(paths["json"].read_text(encoding="utf-8"))
     assert payload["runs"]["primary"]["feature_count"] == 32
-    assert "## Limitations" in paths["markdown"].read_text(encoding="utf-8")
+    report = paths["markdown"].read_text(encoding="utf-8")
+    assert "## Limitations" in report
+    assert f"({PR_MODEL_CARD_ADDENDUM_NAME})" in report
+    addendum = paths["model_card_addendum"].read_text(encoding="utf-8")
+    assert "# Model-card addendum" in addendum
+    assert "not the deployed screener" in addendum
+    assert "(comparison.md)" in addendum
 
 
 def test_load_run_result_reads_the_written_artifacts(tmp_path):

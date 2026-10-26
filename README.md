@@ -171,6 +171,8 @@ python scripts/run_pr_comparison.py `
 
 This reads the three finished run directories and writes `primary_vs_pr_comparison.json` and `primary_vs_pr_comparison.md` under `artifacts/pr/comparison/`. The report compares sample composition, feature sets, discrimination, calibration, operating thresholds, reliability curves, sex- and age-band-specific metrics, and subgroup gaps. It states that the PR 15–49 run isolates the feature-set trade-off while the PR 15+ run adds older adults, and it does not claim that one model is universally better. Raw probabilities are not compared across models because the samples and feature sets differ.
 
+The same command also writes the [PR sensitivity model-card addendum](artifacts/pr/comparison/pr_sensitivity_model_card_addendum.md). It states that the PR model is a sensitivity analysis, not the deployed screener and not a clinical diagnostic tool, and explains the sample and feature differences, the age gradient, calibration, threshold, subgroup gaps, label bias, limitations, and non-goals. It uses only published aggregate results and can be shared without redistributing microdata.
+
 ## Verifying the sample counts
 
 ```powershell
@@ -197,6 +199,7 @@ Published aggregates:
 - `artifacts/pr/runs/pr_15to49_bp_20261026T084051779902Z_42_96adb799/` — PR 15–49 age-matched run.
 - `artifacts/pr/runs/pr_15plus_bp_20261026T084255023166Z_42_2a9e78b6/` — PR 15+ run.
 - `artifacts/pr/comparison/primary_vs_pr_comparison.md` and `.json` — side-by-side comparison.
+- `artifacts/pr/comparison/pr_sensitivity_model_card_addendum.md` — PR sensitivity model-card addendum.
 
 The split assignments, per-respondent SHAP values, model bundles, and all raw/processed microdata remain local and gitignored.
 

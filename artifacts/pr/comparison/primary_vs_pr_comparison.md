@@ -8,6 +8,8 @@ This report compares three runs on the same reporting axes. It does not rank the
 
 > **Do not compare raw probabilities.** The samples and feature sets differ. The comparison is about discrimination, calibration, threshold behaviour, and subgroup gaps.
 
+See the [PR sensitivity model-card addendum](pr_sensitivity_model_card_addendum.md) for intended use, sample and feature differences, the age gradient, label bias, and non-goals.
+
 ## What the three runs are
 
 - The primary IR/MR 15–49 run is the reference model. It uses the rich questionnaire, anthropometry, diet, and BP feature set.
