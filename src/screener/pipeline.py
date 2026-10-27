@@ -257,6 +257,11 @@ class TrainingResult:
     artifacts: dict[str, Path]
     run_dir: Path
 
+    @property
+    def row_counts(self) -> dict:
+        """The row counts recorded for this run."""
+        return self.run_metadata["row_counts"]
+
 
 def _stratified_sample(
     frame: pd.DataFrame,

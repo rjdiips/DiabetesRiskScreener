@@ -32,6 +32,7 @@ from screener.primary_model import (
     primary_15_49_config,
     reconcile_primary_sample,
 )
+from screener.run_summary import build_run_summary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -100,38 +101,16 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     result = run_training_pipeline(features, config, args.output)
-    overall = result.metrics["overall"]
 
     print(
         json.dumps(
-            {
-                "run_dir": str(result.run_dir),
-                "run_name": result.run_metadata["name"],
-                "sample": result.run_metadata["sample"],
-                "smoke": args.smoke,
-                "rows_after_filters": result.run_metadata["row_counts"][
-                    "rows_after_filters"
-                ],
-                "rows_used": result.run_metadata["row_counts"]["rows_used"],
-                "test_rows": result.run_metadata["row_counts"]["test_rows"],
-                "split_source": result.run_metadata["split_source"],
-                "selected_model": result.run_metadata["selected_model"]["family"],
-                "reconciliation": reconciliation["status"],
-                "documented_rows": summary.get("rows"),
-                "documented_positives": summary.get("positives"),
-                "documented_match": result.run_metadata["row_counts"][
-                    "rows_after_filters"
-                ]
-                == summary.get("rows"),
-                "roc_auc": overall["roc_auc"],
-                "pr_auc": overall["pr_auc"],
-                "threshold": overall["threshold"],
-                "sensitivity": overall["sensitivity"],
-                "specificity": overall["specificity"],
-                "fact_sheet_pr_auc": result.metrics.get("secondary_target", {}).get(
-                    "pr_auc"
-                ),
-            },
+            build_run_summary(
+                result,
+                smoke=args.smoke,
+                reconciliation_status=reconciliation["status"],
+                documented_rows=summary.get("rows"),
+                documented_positives=summary.get("positives"),
+            ),
             indent=2,
         )
     )
