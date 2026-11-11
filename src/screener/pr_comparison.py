@@ -516,21 +516,23 @@ def _format_plain(value: Any) -> str:
     return str(value)
 
 
-def run_metric(
+def run_value(
     comparison: Mapping[str, Any],
     run_key: str,
     name: str,
     *,
     weighted: bool = False,
 ) -> Any:
-    """Return one run metric without exposing the comparison's nested shape."""
-    block = "weighted" if weighted else "overall"
-    return comparison["runs"][run_key]["metrics"][block].get(name)
+    """Return one run metric or run-level field without exposing nested blocks.
 
-
-def run_field(comparison: Mapping[str, Any], run_key: str, name: str) -> Any:
-    """Return a run-level field such as the calibrator or selected family."""
-    return comparison["runs"][run_key]["metrics"].get(name)
+    Names in ``COMPARISON_METRICS`` are read from the overall block, or from the
+    weighted block when ``weighted`` is true. Any other name is a run-level
+    field such as the calibrator or the selected model family.
+    """
+    metrics = comparison["runs"][run_key]["metrics"]
+    if name in COMPARISON_METRICS:
+        return metrics["weighted" if weighted else "overall"].get(name)
+    return metrics.get(name)
 
 
 def _delta_block(runs: Mapping[str, dict], block: str) -> dict:
@@ -699,25 +701,25 @@ def _overall_table(comparison: Mapping[str, Any], *, weighted: bool = False) -> 
         cells = [
             (
                 f"| {label} | "
-                f"{format_value(run_metric(comparison, 'primary', key, weighted=weighted))} |"
+                f"{format_value(run_value(comparison, 'primary', key, weighted=weighted))} |"
             )
         ]
         for run_key in ("pr_15_49", "pr_15_plus"):
             cells.append(
-                f" {format_value(run_metric(comparison, run_key, key, weighted=weighted))} |"
+                f" {format_value(run_value(comparison, run_key, key, weighted=weighted))} |"
             )
         lines.append("".join(cells))
     lines.append(
         "| Calibrator | "
-        f"{_format_plain(run_field(comparison, 'primary', 'calibrator'))} | "
-        f"{_format_plain(run_field(comparison, 'pr_15_49', 'calibrator'))} | "
-        f"{_format_plain(run_field(comparison, 'pr_15_plus', 'calibrator'))} |"
+        f"{_format_plain(run_value(comparison, 'primary', 'calibrator'))} | "
+        f"{_format_plain(run_value(comparison, 'pr_15_49', 'calibrator'))} | "
+        f"{_format_plain(run_value(comparison, 'pr_15_plus', 'calibrator'))} |"
     )
     lines.append(
         "| Selected model | "
-        f"{_format_plain(run_field(comparison, 'primary', 'selected_family'))} | "
-        f"{_format_plain(run_field(comparison, 'pr_15_49', 'selected_family'))} | "
-        f"{_format_plain(run_field(comparison, 'pr_15_plus', 'selected_family'))} |"
+        f"{_format_plain(run_value(comparison, 'primary', 'selected_family'))} | "
+        f"{_format_plain(run_value(comparison, 'pr_15_49', 'selected_family'))} | "
+        f"{_format_plain(run_value(comparison, 'pr_15_plus', 'selected_family'))} |"
     )
     return lines
 
@@ -1036,13 +1038,13 @@ def _addendum_metric_table(comparison: Mapping[str, Any]) -> list[str]:
         ("Calibration intercept", "calibration_intercept"),
     ):
         lines.append(
-            f"| {label} | {format_value(run_metric(comparison, 'pr_15_49', key))} | "
-            f"{format_value(run_metric(comparison, 'pr_15_plus', key))} |"
+            f"| {label} | {format_value(run_value(comparison, 'pr_15_49', key))} | "
+            f"{format_value(run_value(comparison, 'pr_15_plus', key))} |"
         )
     lines.append(
         "| Calibrator | "
-        f"{_format_plain(run_field(comparison, 'pr_15_49', 'calibrator'))} | "
-        f"{_format_plain(run_field(comparison, 'pr_15_plus', 'calibrator'))} |"
+        f"{_format_plain(run_value(comparison, 'pr_15_49', 'calibrator'))} | "
+        f"{_format_plain(run_value(comparison, 'pr_15_plus', 'calibrator'))} |"
     )
     return lines
 
@@ -1065,8 +1067,8 @@ def _addendum_weighted_table(comparison: Mapping[str, Any]) -> list[str]:
     ):
         lines.append(
             f"| {label} | "
-            f"{format_value(run_metric(comparison, 'pr_15_49', key, weighted=True))} | "
-            f"{format_value(run_metric(comparison, 'pr_15_plus', key, weighted=True))} |"
+            f"{format_value(run_value(comparison, 'pr_15_49', key, weighted=True))} | "
+            f"{format_value(run_value(comparison, 'pr_15_plus', key, weighted=True))} |"
         )
     return lines
 
@@ -1082,13 +1084,13 @@ def _addendum_threshold_table(comparison: Mapping[str, Any]) -> list[str]:
     for key in ("pr_15_49", "pr_15_plus"):
         lines.append(
             f"| {RUN_LABELS[key]} | "
-            f"{format_value(run_metric(comparison, key, 'threshold'))} | "
-            f"{format_value(run_metric(comparison, key, 'sensitivity'))} | "
-            f"{format_value(run_metric(comparison, key, 'specificity'))} | "
-            f"{format_value(run_metric(comparison, key, 'ppv'))} | "
-            f"{format_value(run_metric(comparison, key, 'npv'))} | "
-            f"{format_value(run_metric(comparison, key, 'f1'))} | "
-            f"{format_value(run_metric(comparison, key, 'sensitivity_at_specificity_0_8'))} |"
+            f"{format_value(run_value(comparison, key, 'threshold'))} | "
+            f"{format_value(run_value(comparison, key, 'sensitivity'))} | "
+            f"{format_value(run_value(comparison, key, 'specificity'))} | "
+            f"{format_value(run_value(comparison, key, 'ppv'))} | "
+            f"{format_value(run_value(comparison, key, 'npv'))} | "
+            f"{format_value(run_value(comparison, key, 'f1'))} | "
+            f"{format_value(run_value(comparison, key, 'sensitivity_at_specificity_0_8'))} |"
         )
     return lines
 
@@ -1353,10 +1355,10 @@ def render_pr_model_card_addendum(
         ),
         (
             f"- On the age-matched comparison, the primary 32-feature model has "
-            f"ROC-AUC {format_value(run_metric(comparison, 'primary', 'roc_auc'))} "
-            f"and PR-AUC {format_value(run_metric(comparison, 'primary', 'pr_auc'))}, "
-            f"versus ROC-AUC {format_value(run_metric(comparison, 'pr_15_49', 'roc_auc'))} "
-            f"and PR-AUC {format_value(run_metric(comparison, 'pr_15_49', 'pr_auc'))} "
+            f"ROC-AUC {format_value(run_value(comparison, 'primary', 'roc_auc'))} "
+            f"and PR-AUC {format_value(run_value(comparison, 'primary', 'pr_auc'))}, "
+            f"versus ROC-AUC {format_value(run_value(comparison, 'pr_15_49', 'roc_auc'))} "
+            f"and PR-AUC {format_value(run_value(comparison, 'pr_15_49', 'pr_auc'))} "
             "for the 12-feature PR 15–49 model. This is descriptive, not a pure "
             "ablation: the PR and IR/MR instruments measure different concepts."
         ),
@@ -1439,9 +1441,9 @@ def render_pr_model_card_addendum(
         (
             "Each run selects its own referral threshold on its own out-of-fold "
             "predictions, targeting at least 80% sensitivity. The PR 15+ threshold "
-            f"is {format_value(run_metric(comparison, 'pr_15_plus', 'threshold'))}; "
+            f"is {format_value(run_value(comparison, 'pr_15_plus', 'threshold'))}; "
             f"the PR 15–49 threshold is "
-            f"{format_value(run_metric(comparison, 'pr_15_49', 'threshold'))}. "
+            f"{format_value(run_value(comparison, 'pr_15_49', 'threshold'))}. "
             "These are policy choices, not intrinsic model properties."
         ),
         "",
@@ -1450,9 +1452,9 @@ def render_pr_model_card_addendum(
             "or NPV cannot be transported to another age structure, state, or "
             "clinical setting without recalibration and a new threshold decision. "
             "At 80% specificity, sensitivity is "
-            f"{format_value(run_metric(comparison, 'pr_15_49', 'sensitivity_at_specificity_0_8'))} "
+            f"{format_value(run_value(comparison, 'pr_15_49', 'sensitivity_at_specificity_0_8'))} "
             "for PR 15–49 and "
-            f"{format_value(run_metric(comparison, 'pr_15_plus', 'sensitivity_at_specificity_0_8'))} "
+            f"{format_value(run_value(comparison, 'pr_15_plus', 'sensitivity_at_specificity_0_8'))} "
             "for PR 15+; this higher-specificity operating point is more demanding "
             "than the 80%-sensitivity threshold."
         ),
@@ -1720,7 +1722,6 @@ __all__ = [
     "load_run_result",
     "render_pr_model_card_addendum",
     "render_primary_vs_pr_report",
-    "run_field",
-    "run_metric",
+    "run_value",
     "write_primary_vs_pr_report",
 ]
