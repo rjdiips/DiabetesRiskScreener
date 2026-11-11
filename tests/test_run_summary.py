@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from screener.pipeline import TrainingConfig, TrainingResult
+from screener.primary_model import PRIMARY_REFERENCE
 from screener.run_summary import build_run_summary
 
 
@@ -21,7 +22,7 @@ def fake_run_result(
 ) -> TrainingResult:
     if row_counts is None:
         row_counts = {
-            "rows_after_filters": 774_861,
+            "rows_after_filters": PRIMARY_REFERENCE["rows"],
             "rows_used": 5_000,
             "test_rows": 1_000,
         }
@@ -69,8 +70,8 @@ def test_summary_keeps_every_documented_field():
         sample="15plus",
         smoke=True,
         reconciliation_status="pass",
-        documented_rows=774_861,
-        documented_positives=64_526,
+        documented_rows=PRIMARY_REFERENCE["rows"],
+        documented_positives=PRIMARY_REFERENCE["positives"],
     )
 
     assert summary == {
@@ -80,14 +81,14 @@ def test_summary_keeps_every_documented_field():
         "sample_label": "age_15_plus",
         "comparison_run": None,
         "smoke": True,
-        "rows_after_filters": 774_861,
+        "rows_after_filters": PRIMARY_REFERENCE["rows"],
         "rows_used": 5_000,
         "test_rows": 1_000,
         "split_source": "mixed",
         "selected_model": "lightgbm",
         "reconciliation": "pass",
-        "documented_rows": 774_861,
-        "documented_positives": 64_526,
+        "documented_rows": PRIMARY_REFERENCE["rows"],
+        "documented_positives": PRIMARY_REFERENCE["positives"],
         "documented_match": True,
         "roc_auc": 0.8,
         "pr_auc": 0.42,
@@ -126,8 +127,8 @@ def test_summary_reports_the_comparison_run_and_missing_fact_sheet_target():
         sample="15-49",
         smoke=False,
         reconciliation_status="review",
-        documented_rows=774_861,
-        documented_positives=64_526,
+        documented_rows=PRIMARY_REFERENCE["rows"],
+        documented_positives=PRIMARY_REFERENCE["positives"],
     )
 
     assert summary["sample"] == "15-49"
@@ -147,8 +148,8 @@ def test_summary_defaults_the_sample_to_the_recorded_label():
         result,
         smoke=False,
         reconciliation_status="pass",
-        documented_rows=774_861,
-        documented_positives=64_526,
+        documented_rows=PRIMARY_REFERENCE["rows"],
+        documented_positives=PRIMARY_REFERENCE["positives"],
     )
 
     assert summary["sample"] == "age_15_plus"
@@ -171,8 +172,8 @@ def test_summary_does_not_need_the_run_directory_to_exist():
         sample="15plus",
         smoke=False,
         reconciliation_status="pass",
-        documented_rows=774_861,
-        documented_positives=64_526,
+        documented_rows=PRIMARY_REFERENCE["rows"],
+        documented_positives=PRIMARY_REFERENCE["positives"],
     )
 
     assert summary["run_dir"] == str(missing)

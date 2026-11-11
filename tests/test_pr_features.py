@@ -434,3 +434,11 @@ def test_pr_audit_reconciles_against_matching_reference_counts():
 
     assert reconciliation["status"] == "pass"
     assert all(check["pass"] for check in reconciliation["checks"].values())
+
+
+def test_pr_audit_reconciliation_reports_status_and_checks_without_a_summary():
+    audit = build_pr_feature_audit(build_pr_features(pr_frame()))
+
+    reconciliation = reconcile_pr_audit(audit)
+
+    assert set(reconciliation) == {"status", "checks"}

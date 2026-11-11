@@ -80,3 +80,9 @@ def test_primary_sample_summary_and_reconciliation():
 
 def test_primary_reconciliation_uses_the_documented_reference_counts():
     assert PRIMARY_REFERENCE == {"rows": 774_861, "positives": 64_526}
+
+
+def test_primary_reconciliation_reports_status_summary_and_checks():
+    report = reconcile_primary_sample(_sample())
+
+    assert set(report) == {"status", "summary", "checks"}
