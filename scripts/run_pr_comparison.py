@@ -31,7 +31,7 @@ from screener.config import ARTIFACTS_DIR
 from screener.pr_comparison import (
     compare_primary_vs_pr,
     load_run_result,
-    run_metric,
+    run_value,
     write_primary_vs_pr_report,
 )
 
@@ -95,8 +95,8 @@ def main(argv: list[str] | None = None) -> int:
             key: {
                 "run_id": comparison["runs"][key]["run_id"],
                 "feature_count": comparison["runs"][key]["feature_count"],
-                "roc_auc": run_metric(comparison, key, "roc_auc"),
-                "pr_auc": run_metric(comparison, key, "pr_auc"),
+                "roc_auc": run_value(comparison, key, "roc_auc"),
+                "pr_auc": run_value(comparison, key, "pr_auc"),
             }
             for key in ("primary", "pr_15_49", "pr_15_plus")
         },
