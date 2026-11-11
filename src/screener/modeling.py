@@ -7,12 +7,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, SplineTransformer, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .model_bundle import ConstantModel
 
@@ -33,7 +34,6 @@ MONOTONE_FEATURES = SPLINE_FEATURES
 # Restricted cubic spline basis: quantile knots fitted on the training matrix,
 # so the knot placement cannot leak from held-out rows.
 SPLINE_KNOTS = 5
-SPLINE_DEGREE = 3
 
 DEFAULT_LIGHTGBM_PARAMS: dict[str, Any] = {
     "n_estimators": 300,
@@ -146,15 +146,78 @@ def inference_matrix(
     return matrix
 
 
-def _spline_transformer() -> SplineTransformer:
-    """The pre-registered restricted cubic spline basis configuration."""
-    return SplineTransformer(
-        n_knots=SPLINE_KNOTS,
-        degree=SPLINE_DEGREE,
-        knots="quantile",
-        include_bias=False,
-        extrapolation="linear",
-    )
+class RestrictedCubicSplineTransformer(TransformerMixin, BaseEstimator):
+    """Harrell restricted cubic spline basis with quantile knots.
+
+    Each input column becomes ``n_knots - 1`` output columns: the linear term
+    plus one truncated-power term per interior knot. Beyond the boundary knots
+    the basis is linear, and missing values are filled with the training
+    median, so knots and medians are learned from training rows only.
+    """
+
+    def __init__(self, n_knots: int = SPLINE_KNOTS):
+        self.n_knots = n_knots
+
+    def fit(self, X, y=None):
+        values = np.asarray(X, dtype="float64")
+        if values.ndim == 1:
+            values = values.reshape(-1, 1)
+        quantiles = np.linspace(0.0, 1.0, self.n_knots)
+        self.n_features_in_ = values.shape[1]
+        self.medians_ = np.nan_to_num(np.nanmedian(values, axis=0), nan=0.0)
+        self.knots_ = np.nan_to_num(
+            np.stack(
+                [
+                    np.nanquantile(values[:, column], quantiles)
+                    for column in range(values.shape[1])
+                ]
+            ),
+            nan=0.0,
+        )
+        return self
+
+    def transform(self, X):
+        values = np.asarray(X, dtype="float64").copy()
+        if values.ndim == 1:
+            values = values.reshape(-1, 1)
+        missing = np.isnan(values)
+        if missing.any():
+            values[missing] = np.take(self.medians_, np.where(missing)[1])
+
+        blocks = []
+        for column in range(values.shape[1]):
+            knots = self.knots_[column]
+            x = values[:, column]
+            terms = [x]
+            span = knots[-1] - knots[-2]
+            for index in range(1, self.n_knots - 1):
+                if span <= 0:
+                    # Constant column: no nonlinear term, no division by zero.
+                    terms.append(np.zeros_like(x))
+                    continue
+                terms.append(
+                    np.clip(x - knots[index], 0.0, None) ** 3
+                    - (knots[-1] - knots[index]) / span
+                    * np.clip(x - knots[-2], 0.0, None) ** 3
+                    + (knots[-2] - knots[index]) / span
+                    * np.clip(x - knots[-1], 0.0, None) ** 3
+                )
+            blocks.append(np.column_stack(terms))
+        if not blocks:
+            return np.empty((len(values), 0))
+        return np.column_stack(blocks)
+
+    def get_feature_names_out(self, input_features=None):
+        if input_features is None:
+            input_features = [
+                f"x{index}" for index in range(self.n_features_in_)
+            ]
+        names = [
+            f"{column}_rcs{index}"
+            for column in input_features
+            for index in range(self.n_knots - 1)
+        ]
+        return np.asarray(names, dtype=object)
 
 
 def restricted_cubic_spline_basis(
@@ -163,14 +226,14 @@ def restricted_cubic_spline_basis(
 ) -> pd.DataFrame:
     """Return the restricted cubic spline basis for the columns present.
 
-    The knots are quantiles of the supplied matrix, so callers pass training
-    rows only. Columns missing from the matrix (for example BMI and waist in
-    the PR feature set) are ignored.
+    The knots and imputation medians are quantiles of the supplied matrix, so
+    callers pass training rows only. Columns missing from the matrix (for
+    example BMI and waist in the PR feature set) are ignored.
     """
     present = [column for column in feature_columns if column in matrix.columns]
     if not present:
         return pd.DataFrame(index=matrix.index)
-    transformer = _spline_transformer()
+    transformer = RestrictedCubicSplineTransformer()
     values = transformer.fit_transform(matrix[present].to_numpy(dtype="float64"))
     names = transformer.get_feature_names_out(present)
     return pd.DataFrame(values, index=matrix.index, columns=list(names))
@@ -231,8 +294,7 @@ def _build_logistic_spline(
                 "spline",
                 Pipeline(
                     [
-                        ("imputer", SimpleImputer(strategy="median")),
-                        ("spline", _spline_transformer()),
+                        ("spline", RestrictedCubicSplineTransformer()),
                         ("scale", StandardScaler()),
                     ]
                 ),

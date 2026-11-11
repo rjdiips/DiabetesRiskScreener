@@ -13,6 +13,8 @@ from screener.modeling import (
     MODEL_FAMILIES,
     SENSITIVITY_CONFIGS,
     SPLINE_FEATURES,
+    SPLINE_KNOTS,
+    RestrictedCubicSplineTransformer,
     build_model,
     fit_model,
     model_matrix,
@@ -194,14 +196,70 @@ def test_restricted_cubic_spline_basis_shape_order_and_determinism():
     basis = restricted_cubic_spline_basis(matrix)
     repeated = restricted_cubic_spline_basis(matrix)
 
-    # Six basis functions per feature (five quantile knots, cubic, no bias),
-    # grouped in the documented feature order.
-    assert basis.shape == (len(matrix), 6 * len(SPLINE_FEATURES))
+    # A restricted cubic spline with five knots gives one linear term plus
+    # three nonlinear terms per feature, grouped in the documented order.
+    per_feature = SPLINE_KNOTS - 1
+    assert basis.shape == (len(matrix), per_feature * len(SPLINE_FEATURES))
     for position, feature in enumerate(SPLINE_FEATURES):
-        block = basis.columns[position * 6 : (position + 1) * 6]
-        assert all(name.startswith(f"{feature}_") for name in block)
+        block = basis.columns[position * per_feature : (position + 1) * per_feature]
+        assert list(block) == [
+            f"{feature}_rcs{index}" for index in range(per_feature)
+        ]
     assert not basis.isna().any().any()
     pd.testing.assert_frame_equal(basis, repeated)
+
+
+def test_restricted_cubic_spline_basis_imputes_missing_values():
+    frame = synthetic_frame()
+    matrix, _ = matrix_and_target(frame)
+    matrix.loc[matrix.index[:10], list(SPLINE_FEATURES)] = np.nan
+
+    basis = restricted_cubic_spline_basis(matrix)
+
+    assert basis.shape == (
+        len(matrix),
+        (SPLINE_KNOTS - 1) * len(SPLINE_FEATURES),
+    )
+    assert not basis.isna().any().any()
+    assert np.isfinite(basis.to_numpy()).all()
+
+
+def test_restricted_cubic_spline_basis_guards_a_constant_column():
+    matrix = pd.DataFrame(
+        {
+            "age": np.full(20, 50.0),
+            "bmi": np.linspace(18.0, 40.0, 20),
+            "waist_cm": np.linspace(60.0, 100.0, 20),
+            "systolic_mean": np.linspace(90.0, 180.0, 20),
+            "diastolic_mean": np.linspace(55.0, 110.0, 20),
+        }
+    )
+
+    basis = restricted_cubic_spline_basis(matrix)
+
+    assert basis.shape == (
+        len(matrix),
+        (SPLINE_KNOTS - 1) * len(SPLINE_FEATURES),
+    )
+    assert np.isfinite(basis.to_numpy()).all()
+
+
+def test_restricted_cubic_spline_basis_tails_are_linear():
+    frame = synthetic_frame()
+    matrix, _ = matrix_and_target(frame)
+    columns = list(SPLINE_FEATURES)
+
+    transformer = RestrictedCubicSplineTransformer()
+    transformer.fit(matrix[columns].to_numpy(dtype="float64"))
+
+    # Probe rows above the largest training value, so every feature is beyond
+    # its last knot and the basis must be a straight line there.
+    top = matrix[columns].max().to_numpy()
+    probe = np.vstack([top + offset for offset in range(1, 9)])
+    values = transformer.transform(probe)
+
+    differences = np.diff(values, axis=0)
+    assert np.allclose(differences, differences[0])
 
 
 def test_restricted_cubic_spline_basis_ignores_columns_not_present():
@@ -211,7 +269,7 @@ def test_restricted_cubic_spline_basis_ignores_columns_not_present():
 
     basis = restricted_cubic_spline_basis(matrix)
 
-    assert basis.shape == (len(matrix), 3 * 6)
+    assert basis.shape == (len(matrix), 3 * (SPLINE_KNOTS - 1))
     assert all(
         not any(name.startswith(f"{feature}_") for name in basis.columns)
         for feature in ("bmi", "waist_cm")
