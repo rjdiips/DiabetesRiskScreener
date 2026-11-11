@@ -1,8 +1,9 @@
 """Pure tests for the primary IR/MR 15-49 config and sample reconciliation."""
 
 import pandas as pd
+import pytest
 
-from screener.feature_policy import PRIMARY_DEFAULT_FEATURES
+from screener.feature_policy import PRIMARY_DEFAULT_FEATURES, primary_feature_set
 from screener.primary_model import (
     PRIMARY_REFERENCE,
     primary_15_49_config,
@@ -68,6 +69,19 @@ def test_primary_config_records_the_run_role_and_default_feature_variant():
     assert config.metadata["sample"] == "age_15_49"
     assert config.metadata["feature_variant"] == "default"
     assert config.name == "primary_irmr_15to49"
+
+
+def test_primary_config_resolves_any_named_feature_set():
+    for name in ("measurement_no_anthropometry", "measurement_no_bp", "measurement_no_diet"):
+        config = primary_15_49_config(feature_set=name)
+
+        assert config.feature_columns == primary_feature_set(name)
+        assert len(config.feature_columns) < len(PRIMARY_DEFAULT_FEATURES)
+
+
+def test_primary_config_rejects_an_unknown_feature_set():
+    with pytest.raises(ValueError, match="unknown primary feature-set"):
+        primary_15_49_config(feature_set="everything")
 
 
 def test_primary_sample_summary_and_reconciliation():

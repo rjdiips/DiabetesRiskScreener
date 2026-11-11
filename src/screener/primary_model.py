@@ -19,7 +19,7 @@ from ._config_assembly import (
     config_metadata,
     shared_subgroups,
 )
-from .feature_policy import PRIMARY_DEFAULT_FEATURES
+from .feature_policy import primary_feature_set
 from .features import _compare_counts, _sample_reference
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
@@ -46,6 +46,7 @@ _AUDIT_SUBGROUP_NOTE = (
 def primary_15_49_config(
     *,
     feature_table: str | None = "data/processed/irmr_features.parquet",
+    feature_set: str = "measurement_full",
     split_assignment: pd.DataFrame | None = None,
     split_assignment_path: str | None = None,
     seed: int = 42,
@@ -57,7 +58,11 @@ def primary_15_49_config(
     state_min_test_rows: int = 500,
     metadata: dict | None = None,
 ) -> TrainingConfig:
-    """The primary IR/MR 15-49 model from the shared training pipeline."""
+    """The primary IR/MR 15-49 model from the shared training pipeline.
+
+    ``feature_set`` names any set in ``PRIMARY_FEATURE_SETS``; the default is
+    the full measurement bundle.
+    """
     subgroups = shared_subgroups(
         AGE_15_49_BANDS,
         AGE_15_49_LABELS,
@@ -79,7 +84,7 @@ def primary_15_49_config(
     return assemble_config(
         name=PRIMARY_RUN_NAME,
         feature_table=feature_table,
-        feature_columns=PRIMARY_DEFAULT_FEATURES,
+        feature_columns=primary_feature_set(feature_set),
         sample_filters=(SampleFilter(column="age_15_49", values=(True,)),),
         subgroups=subgroups,
         metadata=config_metadata(
