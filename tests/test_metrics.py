@@ -3,11 +3,13 @@
 import math
 
 import numpy as np
+import pytest
 
 from screener.metrics import (
     binary_metrics,
     bootstrap_confidence_intervals,
     expected_calibration_error,
+    net_benefit_table,
     reliability_curve,
     sensitivity_at_specificity,
 )
@@ -95,6 +97,54 @@ def test_reliability_curve_covers_every_observation():
     assert sum(row["count"] for row in curve) == 4
     assert math.isclose(curve[0]["mean_predicted"], 0.2, rel_tol=1e-12)
     assert math.isclose(curve[1]["observed"], 1.0, rel_tol=1e-12)
+
+
+def test_net_benefit_table_covers_every_threshold_from_a_worked_example():
+    # At the lowest cut this is 2 true positives and 1 false positive out of 4.
+    # Threshold 0.05: 2/4 - (1/4)(0.05/0.95) = 0.486842105...
+    # Threshold 0.08: the false positive (0.075) drops out -> 2/4.
+    # Threshold 0.20: only the 0.25 positive remains -> 1/4.
+    y_true = [1, 1, 0, 0]
+    y_score = [0.19, 0.25, 0.075, 0.02]
+
+    table = net_benefit_table(y_true, y_score)
+
+    assert len(table) == 16
+    assert [row["threshold"] for row in table] == pytest.approx(
+        [0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12,
+         0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20]
+    )
+    assert all(set(row) == {"threshold", "net_benefit"} for row in table)
+    assert math.isclose(table[0]["net_benefit"], 0.4868421053, abs_tol=1e-6)
+    assert math.isclose(table[3]["net_benefit"], 0.5, abs_tol=1e-6)
+    assert math.isclose(table[-1]["net_benefit"], 0.25, abs_tol=1e-6)
+
+
+def test_net_benefit_table_handles_no_positives_without_dividing_by_zero():
+    table = net_benefit_table([0, 0, 0, 0], [0.9, 0.6, 0.4, 0.1])
+
+    assert len(table) == 16
+    # Threshold 0.05 treats all four false positives: -(4/4)(0.05/0.95).
+    assert math.isclose(table[0]["net_benefit"], -0.0526315789, abs_tol=1e-6)
+    # Threshold 0.20 treats three: -(3/4)(0.20/0.80).
+    assert math.isclose(table[-1]["net_benefit"], -0.1875, abs_tol=1e-12)
+
+
+def test_net_benefit_table_handles_no_negatives_without_dividing_by_zero():
+    table = net_benefit_table([1, 1, 1, 1], [0.9, 0.6, 0.4, 0.1])
+
+    assert len(table) == 16
+    # No false positives, so net benefit is the treated positive rate:
+    # all four are treated at 0.05, three at 0.20.
+    assert math.isclose(table[0]["net_benefit"], 1.0, abs_tol=1e-12)
+    assert math.isclose(table[-1]["net_benefit"], 0.75, abs_tol=1e-12)
+
+
+def test_net_benefit_table_keeps_its_shape_for_an_empty_sample():
+    table = net_benefit_table([], [])
+
+    assert len(table) == 16
+    assert all(row["net_benefit"] is None for row in table)
 
 
 def test_weighted_metrics_report_weighted_prevalence():

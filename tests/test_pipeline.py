@@ -13,11 +13,13 @@ import pandas as pd
 import pytest
 
 from screener.feature_policy import PR_15_PLUS_FEATURES, PR_EXCLUDED_FEATURES
+from screener.metrics import binary_metrics
 from screener.model_bundle import load_model_bundle
 from screener.pipeline import (
     Candidate,
     SampleFilter,
     TrainingConfig,
+    _subgroup_metrics,
     prepare_training_data,
     run_training_pipeline,
 )
@@ -439,6 +441,7 @@ def test_subgroup_metrics_report_gaps_and_flag_small_groups(tmp_path):
         "note",
     }
     assert required_columns <= set(subgroups.columns)
+    assert set(subgroups["split"]) == {"test"}
 
     # Sex and age band are mandatory and cover the whole test set once each.
     sex = subgroups[subgroups["subgroup"] == "sex"]
@@ -478,6 +481,51 @@ def test_subgroup_metrics_report_gaps_and_flag_small_groups(tmp_path):
         row = sex.iloc[0]
         expected = round(row[column.replace("gap_", "")] - result.metrics["overall"][overall_key], 6)
         assert row[column] == expected
+
+
+def test_subgroup_metrics_label_development_and_test_rows_with_the_same_rules():
+    features = pr_shaped_features(n_clusters=100)
+    config = pr_15_plus_config()
+    probabilities = np.linspace(0.05, 0.95, len(features))
+    overall = binary_metrics(
+        features[config.target_column].to_numpy(),
+        probabilities,
+        threshold=0.5,
+        n_bins=config.reliability_bins,
+    )
+
+    development = _subgroup_metrics(
+        features,
+        config.target_column,
+        probabilities,
+        config,
+        overall,
+        "development",
+    )
+    test = _subgroup_metrics(
+        features,
+        config.target_column,
+        probabilities,
+        config,
+        overall,
+        "test",
+    )
+
+    assert set(development["split"]) == {"development"}
+    assert set(test["split"]) == {"test"}
+    pd.testing.assert_frame_equal(
+        development.drop(columns="split"), test.drop(columns="split")
+    )
+
+    # The existing reliability and small-group rules are unchanged.
+    sex = development[development["subgroup"] == "sex"]
+    assert set(sex["group"]) == {"male", "female"}
+    assert sex["reliable"].all()
+    oldest = development[
+        development["subgroup"].eq("age_band") & development["group"].eq("70+")
+    ]
+    assert not oldest.iloc[0]["reliable"]
+    assert oldest.iloc[0]["unreliable_reason"]
 
 
 def test_fairness_variant_reports_the_household_head_audit_subgroups(tmp_path):

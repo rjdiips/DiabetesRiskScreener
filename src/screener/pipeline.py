@@ -672,15 +672,17 @@ def _audit_notes(config: TrainingConfig) -> list[str]:
 
 
 def _subgroup_metrics(
-    test: pd.DataFrame,
+    frame: pd.DataFrame,
+    target_column: str,
     probabilities: np.ndarray,
     config: TrainingConfig,
     overall: dict,
+    split_label: str,
 ) -> pd.DataFrame:
     rows = []
-    target = test[config.target_column].to_numpy()
+    target = frame[target_column].to_numpy()
     for spec in config.subgroups:
-        labels = spec.group_values(test)
+        labels = spec.group_values(frame)
         for group in sorted(labels.unique()):
             mask = labels.eq(group).to_numpy()
             n = int(mask.sum())
@@ -699,6 +701,7 @@ def _subgroup_metrics(
             reliable = bool(rows_ok and positives_ok)
             rows.append(
                 {
+                    "split": split_label,
                     "subgroup": spec.name,
                     "group": group,
                     "n": n,
@@ -1400,7 +1403,9 @@ def run_training_pipeline(
             ),
         }
 
-    subgroup_metrics = _subgroup_metrics(test, probabilities, config, overall)
+    subgroup_metrics = _subgroup_metrics(
+        test, config.target_column, probabilities, config, overall, "test"
+    )
     calibration_curve = pd.DataFrame(
         reliability_curve(
             target_test,
