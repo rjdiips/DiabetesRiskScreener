@@ -6,7 +6,7 @@ writes the same artifact set as the primary run.
 """
 
 import json
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,7 @@ import pytest
 
 from screener.feature_policy import PR_15_PLUS_FEATURES, PR_EXCLUDED_FEATURES
 from screener.model_bundle import load_model_bundle
-from screener.pipeline import run_training_pipeline
+from screener.pipeline import Candidate, TrainingConfig, run_training_pipeline
 from screener.pr_model import pr_15_49_config, pr_15_plus_config
 from screener.pr_variants import compare_pr_variants
 from screener.splits import assign_pr_splits
@@ -545,3 +545,155 @@ def test_variant_comparison_compares_real_pipeline_runs(tmp_path):
     assert comparison["small_group_rules"]["small_group_min_rows"] == 200
 
 
+def test_training_config_serialises_candidates_and_the_pinned_candidate():
+    candidate = Candidate(label="logistic-final", family="logistic", params={"C": 0.5})
+    defaults = TrainingConfig().to_dict()
+
+    assert defaults["candidates"] == []
+    assert defaults["pinned_candidate"] is None
+
+    resolved = replace(
+        TrainingConfig(),
+        candidates=(candidate,),
+        pinned_candidate=candidate,
+    ).to_dict()
+    expected = {"label": "logistic-final", "family": "logistic", "params": {"C": 0.5}}
+    assert resolved["candidates"] == [expected]
+    assert resolved["pinned_candidate"] == expected
+    with pytest.raises(FrozenInstanceError):
+        candidate.family = "lightgbm"
+
+
+def test_configured_candidates_drive_the_trial_loop(tmp_path):
+    features = pr_shaped_features()
+    config = replace(
+        pr_15_plus_config(
+            split_assignment=assign_pr_splits(features, seed=42),
+            seed=42,
+            bootstrap_replicates=5,
+            shap_sample_size=10,
+        ),
+        candidates=(
+            Candidate(label="prevalence-reference", family="prevalence"),
+            Candidate(
+                label="logistic-restricted",
+                family="logistic",
+                params={"C": 0.5},
+            ),
+        ),
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    trials = result.metrics["model_selection"]["trials"]
+    assert [trial["label"] for trial in trials] == [
+        "prevalence-reference",
+        "logistic-restricted",
+    ]
+    assert [trial["family"] for trial in trials] == ["prevalence", "logistic"]
+    assert trials[1]["params"] == {"C": 0.5}
+    assert sum(trial["selected"] for trial in trials) == 1
+
+    # No family outside the configured list is scored, even with tuning params.
+    assert "lightgbm" not in {trial["family"] for trial in trials}
+
+    selected = next(trial for trial in trials if trial["selected"])
+    resolved = json.loads(
+        result.artifacts["resolved_config"].read_text(encoding="utf-8")
+    )
+    assert result.metrics["model_selection"]["selected_label"] == selected["label"]
+    assert resolved["selected_label"] == selected["label"]
+    assert resolved["selected_family"] == selected["family"]
+    assert resolved["resolved_model_params"] == selected["params"]
+
+
+def test_pinned_candidate_scores_and_fits_exactly_one_candidate(tmp_path):
+    features = pr_shaped_features()
+    pinned = Candidate(label="chosen-candidate", family="logistic", params={"C": 0.5})
+    config = replace(
+        pr_15_plus_config(
+            split_assignment=assign_pr_splits(features, seed=42),
+            seed=42,
+            bootstrap_replicates=5,
+            shap_sample_size=10,
+        ),
+        candidates=(
+            Candidate(label="prevalence-reference", family="prevalence"),
+            Candidate(label="lightgbm-candidate", family="lightgbm"),
+        ),
+        pinned_candidate=pinned,
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    trials = result.metrics["model_selection"]["trials"]
+    assert len(trials) == 1
+    assert trials[0]["label"] == "chosen-candidate"
+    assert trials[0]["family"] == "logistic"
+    assert trials[0]["params"] == {"C": 0.5}
+    assert trials[0]["selected"] is True
+
+    resolved = json.loads(
+        result.artifacts["resolved_config"].read_text(encoding="utf-8")
+    )
+    assert resolved["selected_label"] == "chosen-candidate"
+    assert resolved["selected_family"] == "logistic"
+    assert resolved["resolved_model_params"] == {"C": 0.5}
+    assert result.model.model_family == "logistic"
+
+
+def test_default_trial_order_is_unchanged(tmp_path):
+    features = pr_shaped_features()
+    config = pr_15_plus_config(
+        split_assignment=assign_pr_splits(features, seed=42),
+        seed=42,
+        bootstrap_replicates=5,
+        shap_sample_size=10,
+        model_params={"lightgbm": LIGHTGBM_TEST_PARAMS},
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    trials = result.metrics["model_selection"]["trials"]
+    assert [trial["family"] for trial in trials] == [
+        "prevalence",
+        "logistic",
+        "lightgbm",
+    ]
+    assert [trial["label"] for trial in trials] == [
+        "prevalence",
+        "logistic",
+        "lightgbm",
+    ]
+    assert trials[2]["params"] == LIGHTGBM_TEST_PARAMS
+    assert sum(trial["selected"] for trial in trials) == 1
+
+
+def test_tuning_settings_expand_into_scored_candidates(tmp_path):
+    features = pr_shaped_features()
+    deeper = {**LIGHTGBM_TEST_PARAMS, "num_leaves": 15}
+    config = pr_15_plus_config(
+        split_assignment=assign_pr_splits(features, seed=42),
+        seed=42,
+        bootstrap_replicates=5,
+        shap_sample_size=10,
+        model_params={"lightgbm": [LIGHTGBM_TEST_PARAMS, deeper]},
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    trials = result.metrics["model_selection"]["trials"]
+    assert [trial["family"] for trial in trials] == [
+        "prevalence",
+        "logistic",
+        "lightgbm",
+        "lightgbm",
+    ]
+    assert len({trial["label"] for trial in trials}) == 4
+    assert [trial["params"] for trial in trials[2:]] == [LIGHTGBM_TEST_PARAMS, deeper]
+
+    selected = next(trial for trial in trials if trial["selected"])
+    resolved = json.loads(
+        result.artifacts["resolved_config"].read_text(encoding="utf-8")
+    )
+    assert resolved["resolved_model_params"] == selected["params"]
