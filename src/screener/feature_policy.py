@@ -173,7 +173,7 @@ FORBIDDEN_FEATURE_COLUMNS = frozenset(
 
 
 def primary_feature_set(name: str = "measurement_full") -> tuple[str, ...]:
-    """Return a documented primary feature set or measurement bundle."""
+    """Return a named primary feature set: a measurement bundle or questionnaire-only."""
     try:
         return PRIMARY_FEATURE_SETS[name]
     except KeyError as error:

@@ -19,9 +19,9 @@ from screener.pipeline import (
     Candidate,
     SampleFilter,
     TrainingConfig,
-    _subgroup_metrics,
     prepare_training_data,
     run_training_pipeline,
+    subgroup_metrics,
 )
 from screener.pr_model import pr_15_49_config, pr_15_plus_config
 from screener.pr_variants import compare_pr_variants
@@ -494,7 +494,7 @@ def test_subgroup_metrics_label_development_and_test_rows_with_the_same_rules():
         n_bins=config.reliability_bins,
     )
 
-    development = _subgroup_metrics(
+    development = subgroup_metrics(
         features,
         config.target_column,
         probabilities,
@@ -502,7 +502,7 @@ def test_subgroup_metrics_label_development_and_test_rows_with_the_same_rules():
         overall,
         "development",
     )
-    test = _subgroup_metrics(
+    test = subgroup_metrics(
         features,
         config.target_column,
         probabilities,
@@ -526,6 +526,39 @@ def test_subgroup_metrics_label_development_and_test_rows_with_the_same_rules():
     ]
     assert not oldest.iloc[0]["reliable"]
     assert oldest.iloc[0]["unreliable_reason"]
+
+
+def test_subgroup_metrics_exclude_unscored_development_rows_from_the_counts():
+    features = pr_shaped_features(n_clusters=100)
+    config = pr_15_plus_config()
+    probabilities = np.linspace(0.05, 0.95, len(features))
+    target = features[config.target_column]
+    uncovered = np.zeros(len(features), dtype=bool)
+    uncovered[features.index[target.eq(1)][:3]] = True
+    uncovered[features.index[target.eq(0)][:1]] = True
+    probabilities[uncovered] = np.nan
+    overall = binary_metrics(
+        target.to_numpy()[~uncovered],
+        probabilities[~uncovered],
+        threshold=0.5,
+        n_bins=config.reliability_bins,
+    )
+
+    development = subgroup_metrics(
+        features,
+        config.target_column,
+        probabilities,
+        config,
+        overall,
+        "development",
+    )
+
+    sex = development[development["subgroup"] == "sex"]
+    scored = features[~uncovered]
+    assert set(development["split"]) == {"development"}
+    assert sex["n"].sum() == len(scored) < len(features)
+    assert sex["positives"].sum() == int(scored[config.target_column].sum())
+    assert sex["positives"].sum() < int(target.sum())
 
 
 def test_fairness_variant_reports_the_household_head_audit_subgroups(tmp_path):
@@ -704,6 +737,14 @@ def test_preparation_seam_reports_missing_features_and_assignment(tmp_path):
         prepare_training_data(features, missing_path)
 
 
+def test_preparation_seam_rejects_a_missing_or_empty_feature_table():
+    config = pr_15_plus_config()
+
+    for features in (None, pd.DataFrame()):
+        with pytest.raises(ValueError, match="feature table is empty"):
+            prepare_training_data(features, config)
+
+
 def test_training_config_serialises_candidates_and_the_pinned_candidate():
     candidate = Candidate(label="logistic-final", family="logistic", params={"C": 0.5})
     defaults = TrainingConfig().to_dict()
@@ -827,6 +868,19 @@ def test_default_trial_order_is_unchanged(tmp_path):
     assert trials[2]["params"] == LIGHTGBM_TEST_PARAMS
     assert sum(trial["selected"] for trial in trials) == 1
 
+    tuning_record = result.metrics["model_selection"]["tuning_record"]
+    selected = next(trial for trial in trials if trial["selected"])
+    assert tuning_record["trial_count"] == 3
+    assert tuning_record["selected"] == {
+        "label": selected["label"],
+        "family": selected["family"],
+        "params": selected["params"],
+    }
+    assert tuning_record["search_space"] == [
+        {"label": trial["label"], "family": trial["family"], "params": trial["params"]}
+        for trial in trials
+    ]
+
 
 def test_tuning_settings_expand_into_scored_candidates(tmp_path):
     features = pr_shaped_features()
@@ -856,3 +910,43 @@ def test_tuning_settings_expand_into_scored_candidates(tmp_path):
         result.artifacts["resolved_config"].read_text(encoding="utf-8")
     )
     assert resolved["resolved_model_params"] == selected["params"]
+
+    tuning_record = result.metrics["model_selection"]["tuning_record"]
+    assert tuning_record["trial_count"] == 4
+    assert tuning_record["selected"] == {
+        "label": selected["label"],
+        "family": selected["family"],
+        "params": selected["params"],
+    }
+    assert [item["label"] for item in tuning_record["search_space"]] == [
+        trial["label"] for trial in trials
+    ]
+    assert [item["params"] for item in tuning_record["search_space"]] == [
+        trial["params"] for trial in trials
+    ]
+
+
+def test_candidate_labels_must_be_unique_and_non_empty(tmp_path):
+    features = pr_shaped_features()
+    base = pr_15_plus_config(
+        split_assignment=assign_pr_splits(features, seed=42),
+        seed=42,
+        bootstrap_replicates=5,
+        shap_sample_size=10,
+    )
+    duplicate = replace(
+        base,
+        candidates=(
+            Candidate(label="same-label", family="prevalence"),
+            Candidate(label="same-label", family="logistic"),
+        ),
+    )
+    with pytest.raises(ValueError, match="duplicate candidate labels: same-label"):
+        run_training_pipeline(features, duplicate, tmp_path)
+
+    empty = replace(
+        base,
+        pinned_candidate=Candidate(label="", family="prevalence"),
+    )
+    with pytest.raises(ValueError, match="candidate labels must not be empty"):
+        run_training_pipeline(features, empty, tmp_path)

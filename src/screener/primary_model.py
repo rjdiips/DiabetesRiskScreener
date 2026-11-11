@@ -92,6 +92,9 @@ def primary_15_49_config(
             sample=PRIMARY_SAMPLE_LABEL,
             run_role=_PRIMARY_RUN_ROLE,
             audit_subgroup_note=_AUDIT_SUBGROUP_NOTE,
+            feature_variant=(
+                "default" if feature_set == "measurement_full" else feature_set
+            ),
             extra=metadata,
         ),
         seed=seed,
