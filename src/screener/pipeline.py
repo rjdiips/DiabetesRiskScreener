@@ -1,8 +1,9 @@
 """One reproducible training pipeline for the primary and PR models.
 
-``run_training_pipeline`` is the only public modeling seam. The primary model
-and the PR sensitivity model differ only in their :class:`TrainingConfig`:
-sample filters, feature set, subgroup columns, and the split assignment.
+``run_training_pipeline`` is the public modeling entry point, and
+``prepare_training_data`` exposes its split seam. The primary model and the PR
+sensitivity model differ only in their :class:`TrainingConfig`: sample filters,
+feature set, subgroup columns, and the split assignment.
 """
 
 from __future__ import annotations
@@ -263,6 +264,25 @@ class TrainingResult:
         return self.run_metadata["row_counts"]
 
 
+@dataclass(frozen=True)
+class PreparedData:
+    """The development and test rows produced by :func:`prepare_training_data`.
+
+    ``development`` and ``test`` are disjoint and together are exactly the used
+    sample. ``assignment`` holds one row per used respondent, ``sample`` is the
+    filtered frame before the split columns are merged, and the counts and
+    summary describe the same partition.
+    """
+
+    sample: pd.DataFrame
+    development: pd.DataFrame
+    test: pd.DataFrame
+    assignment: pd.DataFrame
+    row_counts: dict
+    split_summary: dict
+    split_source: str
+
+
 def _stratified_sample(
     frame: pd.DataFrame,
     target_column: str,
@@ -348,7 +368,10 @@ def _resolve_assignment(
 ) -> tuple[pd.DataFrame, str]:
     assignment = config.split_assignment
     if assignment is None and config.split_assignment_path:
-        assignment = load_split_assignment(config.split_assignment_path)
+        path = Path(config.split_assignment_path)
+        if not path.exists():
+            raise ValueError(f"split assignment file does not exist: {path}")
+        assignment = load_split_assignment(path)
 
     if assignment is not None:
         assignment = validate_split_assignment(assignment)
@@ -371,6 +394,51 @@ def _resolve_assignment(
         n_folds=config.n_folds,
     )
     return assignment, "generated"
+
+
+def prepare_training_data(
+    features: pd.DataFrame,
+    config: TrainingConfig,
+) -> PreparedData:
+    """Apply the sample filters and split the used rows into development and test.
+
+    This is the point where the two frames become separate objects: callers that
+    select a model receive ``prepared.development`` and never the test rows.
+    """
+    frame, row_counts = _prepare_sample(features, config)
+    assignment, source = _resolve_assignment(frame, config)
+
+    data = frame.merge(
+        assignment[["case_id", "split", "fold"]],
+        on="case_id",
+        how="inner",
+        validate="one_to_one",
+    )
+    if len(data) != len(frame):
+        raise ValueError("split assignment could not be matched to every respondent")
+    assert_no_group_leakage(assignment)
+    split_summary = summarise_splits(assignment, frame)
+
+    development = data[data["split"].eq(DEVELOPMENT_SPLIT)].reset_index(drop=True)
+    test = data[data["split"].eq(TEST_SPLIT)].reset_index(drop=True)
+    if development.empty or test.empty:
+        raise ValueError("the split assignment must contain development and test rows")
+
+    folds = pd.to_numeric(development["fold"], errors="coerce")
+    if folds.isna().any() or not folds.isin(range(1, config.n_folds + 1)).all():
+        raise ValueError(
+            f"every development respondent needs a valid fold between 1 and {config.n_folds}"
+        )
+
+    return PreparedData(
+        sample=frame,
+        development=development,
+        test=test,
+        assignment=assignment,
+        row_counts=row_counts,
+        split_summary=split_summary,
+        split_source=source,
+    )
 
 
 def _mean(values) -> float | None:
@@ -1201,28 +1269,19 @@ def run_training_pipeline(
 ) -> TrainingResult:
     """Train, calibrate, evaluate, and document one model run."""
     started_at = _utc_now()
-    frame, row_counts = _prepare_sample(features, config)
-    assignment, source = _resolve_assignment(frame, config)
+    prepared = prepare_training_data(features, config)
+    frame = prepared.sample
+    row_counts = prepared.row_counts
+    assignment = prepared.assignment
+    source = prepared.split_source
+    split_summary = prepared.split_summary
+    development = prepared.development
+    test = prepared.test
 
-    data = frame.merge(
-        assignment[["case_id", "split", "fold"]],
-        on="case_id",
-        how="inner",
-        validate="one_to_one",
-    )
-    if len(data) != len(frame):
-        raise ValueError("split assignment could not be matched to every respondent")
-    assert_no_group_leakage(assignment)
-    split_summary = summarise_splits(assignment, frame)
-
-    development = data[data["split"].eq(DEVELOPMENT_SPLIT)]
-    test = data[data["split"].eq(TEST_SPLIT)].reset_index(drop=True)
-    if test.empty or development.empty:
-        raise ValueError("the split assignment must contain development and test rows")
     if test[config.target_column].nunique() < 2:
         raise ValueError("the test split must contain both target classes")
 
-    selected, final_model, selection = _select_and_refit(data, config)
+    selected, final_model, selection = _select_and_refit(development, config)
 
     covered = selected["covered"]
     oof_target = development.reset_index(drop=True).loc[
@@ -1362,9 +1421,9 @@ def run_training_pipeline(
             "development_rows": len(development),
             "test_rows": len(test),
             "test_positives": int(target_test.sum()),
-            "clusters": int(data[config.group_column].nunique()),
+            "clusters": int(frame[config.group_column].nunique()),
             "households": int(
-                data[[config.group_column, config.household_column]]
+                frame[[config.group_column, config.household_column]]
                 .drop_duplicates()
                 .shape[0]
             ),
