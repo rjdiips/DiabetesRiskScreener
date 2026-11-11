@@ -256,6 +256,34 @@ def binary_metrics(
     }
 
 
+NET_BENEFIT_THRESHOLDS = tuple(round(0.05 + 0.01 * step, 2) for step in range(16))
+
+
+def net_benefit_table(
+    y_true,
+    y_score,
+) -> list[dict]:
+    """Return net benefit at every screening threshold from 0.05 to 0.20.
+
+    Net benefit is ``TP/n - (FP/n) * pt/(1-pt)``, so a sample with only one
+    class still reports a finite value and an empty sample reports ``None``.
+    """
+    y, p, _ = _clean(y_true, y_score)
+    n = len(y)
+    rows = []
+    for threshold in NET_BENEFIT_THRESHOLDS:
+        if not n:
+            rows.append({"threshold": threshold, "net_benefit": None})
+            continue
+        predicted = p >= threshold
+        tp = int(np.sum(predicted & (y == 1)))
+        fp = int(np.sum(predicted & (y == 0)))
+        weight = threshold / (1.0 - threshold)
+        value = tp / n - (fp / n) * weight
+        rows.append({"threshold": threshold, "net_benefit": round(float(value), 6)})
+    return rows
+
+
 def _metric_function(name: str) -> Callable[[np.ndarray, np.ndarray], float | None]:
     if name == "roc_auc":
         return lambda y, p: _value(roc_auc_score(y, p)) if len(np.unique(y)) == 2 else None
