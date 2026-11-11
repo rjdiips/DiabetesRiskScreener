@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -641,16 +641,16 @@ def validate_pr_mr_merge(mr_raw: pd.DataFrame, pr_raw: pd.DataFrame) -> dict:
     bmi_calculated = bmi_from_height_weight(height_cm, weight_kg)
     both_bmi = bmi_reported.notna() & bmi_calculated.notna()
 
-    matched = int(len(both))
-    mr_rows = int(len(mr))
+    matched = len(both)
+    mr_rows = len(mr)
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "merge_keys": {
             "mr": ["mv001", "mv002", "mv003"],
             "pr": ["hv001", "hv002", "hvidx"],
         },
         "mr_rows": mr_rows,
-        "pr_rows": int(len(pr)),
+        "pr_rows": len(pr),
         "mr_key_duplicates": int(mr.duplicated(mr_keys).sum()),
         "pr_key_duplicates": int(pr.duplicated(pr_keys).sum()),
         "mr_key_nulls": int(mr[mr_keys].isna().any(axis=1).sum()),
@@ -854,7 +854,7 @@ def build_mr_features(
 
 def _summary(df: pd.DataFrame, mask: pd.Series | None = None) -> dict:
     subset = df if mask is None else df.loc[mask]
-    rows = int(len(subset))
+    rows = len(subset)
     positive = int(subset["target"].sum())
     return {
         "rows": rows,
@@ -877,10 +877,10 @@ def _missingness(df: pd.DataFrame, columns: Sequence[str]) -> dict:
 def build_feature_audit(df: pd.DataFrame, merge_report: dict) -> dict:
     """Summarise the feature table and merge validation."""
     audit = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "target_definition": "glucose > 140 OR diagnosed == 1 OR medication == 1",
-        "rows": int(len(df)),
-        "columns": int(len(df.columns)),
+        "rows": len(df),
+        "columns": len(df.columns),
         "overall": _summary(df),
         "age_15_49": _summary(df, df["age_15_49"]),
         "age_15_54": _summary(df),
@@ -1039,13 +1039,17 @@ def _observed_pr_counts(audit: dict) -> dict:
     }
 
 
-def reconcile_pr_audit(
-    audit: dict,
-    reference: dict | None = None,
+def _compare_counts(
+    observed: dict,
+    reference: dict,
+    summary: dict | None = None,
 ) -> dict:
-    """Compare observed PR audit counts with the documented NFHS-5 reference."""
-    reference = PR_REFERENCE_COUNTS if reference is None else reference
-    observed = _observed_pr_counts(audit)
+    """Compare observed counts with a reference record and build the report.
+
+    Only names in the reference are checked; a count missing from ``observed``
+    fails its check rather than disappearing. The summary key is omitted when
+    there is none, so records without one keep their serialized shape.
+    """
     checks = {
         name: {
             "expected": expected,
@@ -1054,15 +1058,24 @@ def reconcile_pr_audit(
         }
         for name, expected in reference.items()
     }
-    return {
-        "status": "pass" if all(check["pass"] for check in checks.values()) else "review",
-        "checks": checks,
-    }
+    status = "pass" if all(check["pass"] for check in checks.values()) else "review"
+    if summary is None:
+        return {"status": status, "checks": checks}
+    return {"status": status, "summary": summary, "checks": checks}
+
+
+def reconcile_pr_audit(
+    audit: dict,
+    reference: dict | None = None,
+) -> dict:
+    """Compare observed PR audit counts with the documented NFHS-5 reference."""
+    reference = PR_REFERENCE_COUNTS if reference is None else reference
+    return _compare_counts(_observed_pr_counts(audit), reference)
 
 
 def build_pr_feature_audit(df: pd.DataFrame) -> dict:
     """Summarise the PR feature table for the aggregate audit artifact."""
-    rows = int(len(df))
+    rows = len(df)
     bp_valid = df["systolic_mean"].notna() & df["diastolic_mean"].notna()
     age_50_plus = df["age"].ge(50)
     high_glucose = df["glucose"] > GLUCOSE_THRESHOLD
@@ -1070,12 +1083,12 @@ def build_pr_feature_audit(df: pd.DataFrame) -> dict:
     fact_sheet_known = int(df["target_fact_sheet"].notna().sum())
 
     audit = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "recode": "PR",
         "target_definition": "glucose > 140 OR diagnosed == 1 OR medication == 1",
         "fact_sheet_target_definition": "glucose > 140 OR medication == 1",
         "rows": rows,
-        "columns": int(len(df.columns)),
+        "columns": len(df.columns),
         "overall": _summary(df),
         "age_15_49": _summary(df, df["age_15_49"]),
         "age_50_plus": _summary(df, age_50_plus),

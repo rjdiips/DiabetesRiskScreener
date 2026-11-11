@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 
+from screener.features import PR_REFERENCE_COUNTS
 from screener.pr_model import (
     PR_15_49_REFERENCE,
     pr_15_49_config,
@@ -93,19 +94,10 @@ def test_reconciliation_passes_when_counts_match_the_reference():
 
 
 def test_reconciliation_flags_a_mismatch_instead_of_silently_passing():
-    reference = {
-        "bp_valid_rows": 1_805_697,
-        "bp_positive_rows": 253_091,
-        "bp_valid_age_15_49": 1_290_219,
-        "bp_positive_age_15_49": 112_898,
-        "bp_valid_age_50_plus": 515_478,
-        "bp_positive_age_50_plus": 140_193,
-    }
-
-    report = reconcile_pr_bp_sample(_sample(), reference)
+    report = reconcile_pr_bp_sample(_sample(), PR_REFERENCE_COUNTS)
 
     assert report["status"] == "review"
-    assert report["checks"]["bp_valid_rows"]["expected"] == 1_805_697
+    assert report["checks"]["bp_valid_rows"]["expected"] == PR_REFERENCE_COUNTS["bp_valid_rows"]
     assert report["checks"]["bp_valid_rows"]["observed"] == 3
 
 
@@ -168,6 +160,12 @@ def test_pr_15_49_reconciliation_uses_the_documented_reference_counts():
         "bp_valid_age_15_49": 1_290_219,
         "bp_positive_age_15_49": 112_898,
     }
+
+
+def test_pr_reconciliation_reports_status_summary_and_checks():
+    report = reconcile_pr_15_49_sample(_sample())
+
+    assert set(report) == {"status", "summary", "checks"}
 
 
 def test_pr_15_49_reconciliation_requires_the_flag_column():
