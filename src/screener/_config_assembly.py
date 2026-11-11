@@ -51,7 +51,7 @@ def shared_subgroups(
     )
 
 
-def run_metadata(
+def config_metadata(
     *,
     model_role: str,
     sample: str,
@@ -60,7 +60,7 @@ def run_metadata(
     feature_variant: str = "default",
     extra: dict | None = None,
 ) -> dict:
-    """The run metadata both families record, in a fixed key order."""
+    """The pipeline config metadata both families record, in a fixed key order."""
     return {
         "model_role": model_role,
         "sample": sample,
