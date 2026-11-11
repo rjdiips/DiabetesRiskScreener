@@ -14,7 +14,7 @@ import pytest
 
 from screener.feature_policy import PR_15_PLUS_FEATURES, PR_EXCLUDED_FEATURES
 from screener.model_bundle import load_model_bundle
-from screener.pipeline import run_training_pipeline
+from screener.pipeline import SampleFilter, prepare_training_data, run_training_pipeline
 from screener.pr_model import pr_15_49_config, pr_15_plus_config
 from screener.pr_variants import compare_pr_variants
 from screener.splits import assign_pr_splits
@@ -543,5 +543,110 @@ def test_variant_comparison_compares_real_pipeline_runs(tmp_path):
     assert comparison["variants"]["state"]["subgroups"]["sex"]
     assert comparison["variants"]["state"]["subgroups"]["age_band"]
     assert comparison["small_group_rules"]["small_group_min_rows"] == 200
+
+
+def test_preparation_seam_splits_disjoint_frames_that_match_the_assignment():
+    features = pr_shaped_features()
+    assignment = assign_pr_splits(features, seed=42)
+    config = pr_15_plus_config(split_assignment=assignment, seed=42)
+
+    prepared = prepare_training_data(features, config)
+
+    development = prepared.development
+    test = prepared.test
+    assert set(development["case_id"]).isdisjoint(set(test["case_id"]))
+    assert len(development) + len(test) == prepared.row_counts["rows_used"]
+    assert len(development) + len(test) == len(features) - 1
+    assert prepared.split_source == "pr_only"
+
+    # The assignment is one row per used respondent and matches both frames.
+    by_split = prepared.assignment.groupby("split")["case_id"].agg(set).to_dict()
+    assert by_split["development"] == set(development["case_id"])
+    assert by_split["test"] == set(test["case_id"])
+
+    merged = development[["case_id", "split", "fold"]].merge(
+        prepared.assignment[["case_id", "split", "fold"]],
+        on="case_id",
+        suffixes=("_frame", "_assignment"),
+        validate="one_to_one",
+    )
+    assert len(merged) == len(development)
+    assert merged["split_frame"].eq("development").all()
+    assert merged["split_assignment"].eq("development").all()
+    assert merged["fold_frame"].eq(merged["fold_assignment"]).all()
+
+    # Every development respondent has a usable fold for cross-validation.
+    folds = development["fold"]
+    assert folds.notna().all()
+    assert set(folds.astype(int)) == set(range(1, config.n_folds + 1))
+
+    assert prepared.split_summary["rows"] == len(development) + len(test)
+    assert prepared.split_summary["development"]["rows"] == len(development)
+    assert prepared.split_summary["test"]["rows"] == len(test)
+
+
+def test_preparation_seam_never_returns_a_test_row_in_development():
+    features = pr_shaped_features()
+    assignment = assign_pr_splits(features, seed=42)
+    config = pr_15_plus_config(split_assignment=assignment, seed=42)
+
+    prepared = prepare_training_data(features, config)
+
+    test_only = set(
+        assignment.loc[assignment["split"].eq("test"), "case_id"].astype(str)
+    )
+    assert test_only & set(prepared.development["case_id"]) == set()
+    assert test_only <= set(prepared.test["case_id"])
+    development_splits = prepared.assignment.set_index("case_id").loc[
+        sorted(prepared.development["case_id"]), "split"
+    ]
+    assert development_splits.eq("development").all()
+
+
+def test_preparation_seam_rejects_an_assignment_that_misses_a_respondent():
+    features = pr_shaped_features()
+    assignment = assign_pr_splits(features, seed=42)
+    partial = assignment[~assignment["case_id"].eq(features.iloc[0]["case_id"])]
+    config = pr_15_plus_config(split_assignment=partial, seed=42)
+
+    with pytest.raises(ValueError, match="does not cover"):
+        prepare_training_data(features, config)
+
+
+def test_preparation_seam_rejects_a_development_fold_outside_the_folds():
+    features = pr_shaped_features()
+    assignment = assign_pr_splits(features, seed=42)
+    assignment.loc[assignment["split"].eq("development"), "fold"] = 99
+    config = pr_15_plus_config(split_assignment=assignment, seed=42)
+
+    with pytest.raises(ValueError, match="valid fold|between 1 and"):
+        prepare_training_data(features, config)
+
+
+def test_preparation_seam_rejects_a_filter_that_empties_the_sample():
+    features = pr_shaped_features()
+    config = replace(
+        pr_15_plus_config(),
+        sample_filters=(SampleFilter(column="age", minimum=200),),
+    )
+
+    with pytest.raises(ValueError, match="retain no rows"):
+        prepare_training_data(features, config)
+
+
+def test_preparation_seam_reports_missing_features_and_assignment(tmp_path):
+    features = pr_shaped_features()
+    missing_column = replace(
+        pr_15_plus_config(),
+        feature_columns=pr_15_plus_config().feature_columns + ("not_a_feature",),
+    )
+    with pytest.raises(ValueError, match="missing required columns"):
+        prepare_training_data(features, missing_column)
+
+    missing_path = pr_15_plus_config(
+        split_assignment_path=str(tmp_path / "missing_assignment.parquet")
+    )
+    with pytest.raises(ValueError, match="split assignment file"):
+        prepare_training_data(features, missing_path)
 
 
