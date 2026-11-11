@@ -174,6 +174,22 @@ class SubgroupSpec:
         }
 
 
+@dataclass(frozen=True)
+class Candidate:
+    """One configured model candidate: family, parameters, and a stable label."""
+
+    label: str
+    family: str
+    params: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "label": self.label,
+            "family": self.family,
+            "params": self.params,
+        }
+
+
 @dataclass
 class TrainingConfig:
     """Everything that distinguishes one run from another."""
@@ -201,6 +217,8 @@ class TrainingConfig:
     small_group_min_positives: int = 50
     state_min_test_rows: int = 500
     model_params: dict[str, Any] = field(default_factory=dict)
+    candidates: tuple[Candidate, ...] = ()
+    pinned_candidate: Candidate | None = None
     calibration_methods: tuple[str, ...] = ("isotonic", "platt")
     split_assignment: pd.DataFrame | None = field(default=None, repr=False)
     split_assignment_path: str | None = None
@@ -233,6 +251,12 @@ class TrainingConfig:
             "small_group_min_positives": self.small_group_min_positives,
             "state_min_test_rows": self.state_min_test_rows,
             "model_params": self.model_params,
+            "candidates": [item.to_dict() for item in self.candidates],
+            "pinned_candidate": (
+                self.pinned_candidate.to_dict()
+                if self.pinned_candidate is not None
+                else None
+            ),
             "calibration_methods": list(self.calibration_methods),
             "split_assignment_supplied": self.split_assignment is not None,
             "split_assignment_path": self.split_assignment_path,
@@ -463,12 +487,29 @@ def _param_candidates(config: TrainingConfig, family: str) -> list[dict]:
     return [dict(configured)]
 
 
-def _cross_validate_family(
+def _resolve_candidates(config: TrainingConfig) -> list[Candidate]:
+    """The candidates to score: the pinned one, the configured list, or the defaults."""
+    if config.pinned_candidate is not None:
+        return [config.pinned_candidate]
+    if config.candidates:
+        return list(config.candidates)
+
+    candidates = []
+    for family in ("prevalence", "logistic", "lightgbm"):
+        settings = _param_candidates(config, family)
+        for index, params in enumerate(settings):
+            label = family if len(settings) == 1 else f"{family}[{index}]"
+            candidates.append(Candidate(label=label, family=family, params=params))
+    return candidates
+
+
+def _cross_validate_candidate(
     data: pd.DataFrame,
     config: TrainingConfig,
-    family: str,
-    params: dict,
+    candidate: Candidate,
 ) -> dict:
+    family = candidate.family
+    params = candidate.params
     development = data[data["split"].eq(DEVELOPMENT_SPLIT)].reset_index(drop=True)
     matrix, levels = model_matrix(
         development,
@@ -525,6 +566,7 @@ def _cross_validate_family(
         )
 
     return {
+        "label": candidate.label,
         "family": family,
         "params": params,
         "oof": oof,
@@ -548,10 +590,10 @@ def _select_and_refit(
     data: pd.DataFrame,
     config: TrainingConfig,
 ) -> tuple[dict, Any, dict]:
-    trials = []
-    for family in ("prevalence", "logistic", "lightgbm"):
-        for params in _param_candidates(config, family):
-            trials.append(_cross_validate_family(data, config, family, params))
+    trials = [
+        _cross_validate_candidate(data, config, candidate)
+        for candidate in _resolve_candidates(config)
+    ]
 
     if not trials:
         raise ValueError("no model trials were produced")
@@ -580,6 +622,7 @@ def _select_and_refit(
 
     summary = [
         {
+            "label": trial["label"],
             "family": trial["family"],
             "params": trial["params"],
             "mean_pr_auc": trial["mean_pr_auc"],
@@ -590,6 +633,7 @@ def _select_and_refit(
         for trial in trials
     ]
     return selected, final_model, {
+        "selected_label": selected["label"],
         "selected_family": selected["family"],
         "selected_params": selected["params"],
         "trials": summary,
@@ -1486,6 +1530,7 @@ def run_training_pipeline(
             "run_id": run_id,
             **config.to_dict(),
             "resolved_model_params": selection["selected_params"],
+            "selected_label": selection["selected_label"],
             "selected_family": selection["selected_family"],
         },
     )
