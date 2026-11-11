@@ -11,6 +11,7 @@ from screener.pr_model import (
     reconcile_pr_15_49_sample,
     reconcile_pr_bp_sample,
 )
+from screener.primary_model import primary_15_49_config
 
 
 def _sample() -> pd.DataFrame:
@@ -174,6 +175,27 @@ def test_pr_15_49_reconciliation_requires_the_flag_column():
 
     with pytest.raises(ValueError, match="age_15_49"):
         reconcile_pr_15_49_sample(frame)
+
+
+def test_primary_and_pr_share_the_core_subgroups_and_the_15_49_bands():
+    primary = primary_15_49_config()
+    pr_younger = pr_15_49_config()
+    pr_plus = pr_15_plus_config()
+
+    def shared(config):
+        return {
+            spec.name: spec
+            for spec in config.subgroups
+            if not spec.audit_only and spec.name != "age_band"
+        }
+
+    assert shared(primary) == shared(pr_younger) == shared(pr_plus)
+
+    primary_band = next(spec for spec in primary.subgroups if spec.name == "age_band")
+    pr_band = next(spec for spec in pr_younger.subgroups if spec.name == "age_band")
+    assert primary_band == pr_band
+    assert primary_band.bins == (15, 25, 35, 45, 50)
+    assert primary_band.labels == ("15-24", "25-34", "35-44", "45-49")
 
 
 def test_pr_configs_record_distinct_run_roles():
