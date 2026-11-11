@@ -26,6 +26,7 @@ from .feature_policy import validate_feature_frame
 from .metrics import (
     binary_metrics,
     bootstrap_confidence_intervals,
+    net_benefit_table,
     reliability_curve,
 )
 from .model_bundle import ModelBundle, save_model_bundle
@@ -48,6 +49,7 @@ from .splits import (
 )
 
 _TARGET = "target"
+SELECTION_SPLIT_LABEL = "development_oof"
 
 
 def _utc_now() -> str:
@@ -188,6 +190,42 @@ class Candidate:
             "family": self.family,
             "params": self.params,
         }
+
+
+@dataclass(frozen=True)
+class SelectionRecord:
+    """Out-of-fold evidence for one scored candidate on the development folds."""
+
+    label: str
+    family: str
+    params: dict
+    tuning_record: dict
+    feature_set: str
+    feature_count: int
+    oof_scores: np.ndarray
+    oof_probabilities: np.ndarray
+    target: np.ndarray
+    covered: np.ndarray
+    fold: np.ndarray
+    calibration_method: str
+    calibration_report: dict
+    threshold_report: dict
+    metrics: dict
+    subgroups: list[dict]
+    reliability_curve: list[dict]
+    net_benefit: list[dict]
+    fold_metrics: list[dict]
+
+
+@dataclass(frozen=True)
+class SelectionEvidence:
+    """The development-only selection result: one record per candidate."""
+
+    feature_set: str
+    feature_count: int
+    development_rows: int
+    fold_count: int
+    records: list[SelectionRecord]
 
 
 @dataclass
@@ -464,6 +502,147 @@ def prepare_training_data(
         row_counts=row_counts,
         split_summary=split_summary,
         split_source=source,
+    )
+
+
+def _validate_development_frame(
+    development: pd.DataFrame,
+    config: TrainingConfig,
+) -> None:
+    """Reject anything but development rows with a valid fold, before fitting."""
+    _require_columns(development, ["split", "fold"], "selection frame")
+    leaked = ~development["split"].eq(DEVELOPMENT_SPLIT)
+    if leaked.any():
+        raise ValueError(
+            "selection accepts development rows only; found "
+            f"{int(leaked.sum())} test rows"
+        )
+    folds = pd.to_numeric(development["fold"], errors="coerce")
+    valid = (
+        folds.notna()
+        & folds.mod(1).eq(0)
+        & folds.isin(range(1, config.n_folds + 1))
+    )
+    if not valid.all():
+        raise ValueError(
+            "every development respondent needs a valid fold between "
+            f"1 and {config.n_folds}; found {int((~valid).sum())} invalid folds"
+        )
+
+
+def evaluate_candidates(
+    development: pd.DataFrame,
+    config: TrainingConfig,
+) -> SelectionEvidence:
+    """Score every configured candidate on the development folds.
+
+    The frame must hold development rows only; a test row is rejected before
+    any model is built. Calibration and the screening threshold are fitted on
+    each candidate's own out-of-fold predictions, and every table is JSON-safe.
+    """
+    _validate_development_frame(development, config)
+    _require_columns(development, [config.target_column], "selection frame")
+    validate_feature_frame(development, config.feature_columns)
+
+    candidates = _resolve_candidates(config)
+    if not candidates:
+        raise ValueError("no model trials were produced")
+
+    target = development[config.target_column].to_numpy()
+    fold = pd.to_numeric(development["fold"], errors="coerce").astype(int).to_numpy()
+    feature_set = (
+        config.metadata.get("feature_set")
+        or config.metadata.get("feature_variant")
+        or "default"
+    )
+    feature_count = len(config.feature_columns)
+    search_space = [candidate.to_dict() for candidate in candidates]
+
+    records = []
+    for candidate in candidates:
+        trial = _cross_validate_candidate(development, config, candidate)
+        covered = trial["covered"]
+        if not covered.any():
+            raise ValueError(
+                f"candidate '{candidate.label}' has no out-of-fold predictions"
+            )
+        covered_target = target[covered]
+        oof_scores = trial["oof"]
+        calibrator, calibration_report = select_calibrator(
+            covered_target,
+            oof_scores[covered],
+            methods=config.calibration_methods,
+        )
+        probabilities = np.full(len(development), np.nan)
+        probabilities[covered] = np.clip(
+            calibrator.predict(oof_scores[covered]), 0.0, 1.0
+        )
+        calibrated = probabilities[covered]
+        threshold_report = select_threshold(
+            covered_target,
+            calibrated,
+            target_sensitivity=config.target_sensitivity,
+        )
+        overall = binary_metrics(
+            covered_target,
+            calibrated,
+            threshold=threshold_report["threshold"],
+            n_bins=config.reliability_bins,
+        )
+        subgroups = subgroup_metrics(
+            development,
+            config.target_column,
+            probabilities,
+            config,
+            overall,
+            SELECTION_SPLIT_LABEL,
+        )
+        records.append(
+            SelectionRecord(
+                label=candidate.label,
+                family=candidate.family,
+                params=trial["params"],
+                tuning_record={
+                    "trial_count": len(candidates),
+                    "selected": {
+                        "label": candidate.label,
+                        "family": candidate.family,
+                        "params": candidate.params,
+                    },
+                    "search_space": search_space,
+                },
+                feature_set=feature_set,
+                feature_count=feature_count,
+                oof_scores=oof_scores,
+                oof_probabilities=probabilities,
+                target=target,
+                covered=covered,
+                fold=fold,
+                calibration_method=calibration_report["selected"],
+                calibration_report=_jsonable(calibration_report),
+                threshold_report=_jsonable(threshold_report),
+                metrics=_jsonable(overall),
+                subgroups=_jsonable(subgroups.to_dict("records")),
+                reliability_curve=_jsonable(
+                    reliability_curve(
+                        covered_target,
+                        calibrated,
+                        n_bins=config.reliability_bins,
+                    )
+                ),
+                net_benefit=_jsonable(
+                    net_benefit_table(covered_target, calibrated)
+                ),
+                fold_metrics=_jsonable(trial["fold_metrics"]),
+            )
+        )
+
+    return SelectionEvidence(
+        feature_set=feature_set,
+        feature_count=feature_count,
+        development_rows=len(development),
+        fold_count=int(development["fold"].nunique()),
+        records=records,
     )
 
 
