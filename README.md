@@ -8,7 +8,7 @@ A research and portfolio project that estimates the probability of elevated rand
 
 - An India-specific risk screener built on NFHS-5.
 - A calibrated model with household-grouped validation.
-- A FastAPI service and a bilingual (English/Hindi) demo.
+- A FastAPI service and web demo.
 - A calibration, subgroup, and fairness report.
 
 ## What this is not
@@ -16,6 +16,13 @@ A research and portfolio project that estimates the probability of elevated rand
 - Not a diagnostic test.
 - Not a predictor of future diabetes.
 - Not for insurance, employment, or care-allocation decisions.
+
+## Possible later additions
+
+Not built and not part of the current scope:
+
+- Bilingual (Hindi/English) UI support.
+- Offline-first PWA.
 
 ## Data
 
@@ -45,7 +52,7 @@ tests/              # unit and data tests
 
 ## Setup
 
-Use Python 3.11 or 3.12 for the modeling stack (LightGBM/SHAP wheels may lag on 3.14).
+The runs in this repository were produced on Python 3.14.6, which is the only interpreter this project is tested on and the floor declared in `requires-python`. Each run records the interpreter and package versions it actually used in `run_metadata.json`; differences between library versions matter more than differences between Python minor versions.
 
 ```powershell
 python -m venv .venv
@@ -183,7 +190,7 @@ This reads the local PR and IR/MR feature tables and checks the definition-of-do
 
 ## Published real-data results
 
-The full real-data runs were executed on the local NFHS-5 tables with the pinned modeling stack. The stack targets Python 3.11 or 3.12 (see Setup); each run records the interpreter and package versions it actually used in its `run_metadata.json`. The primary run generated the cluster partition; the PR partition was rebuilt with `--primary-assignment` and records `split_source: mixed`. All three runs selected LightGBM and isotonic calibration.
+The full real-data runs were executed on the local NFHS-5 tables with the pinned modeling stack. The runs used Python 3.14.6 (see Setup); each run records the interpreter and package versions it actually used in its `run_metadata.json`. The primary run generated the cluster partition; the PR partition was rebuilt with `--primary-assignment` and records `split_source: mixed`. All three runs selected LightGBM and isotonic calibration.
 
 | Run | Rows | Test rows | Features | ROC-AUC | PR-AUC | Brier | ECE | Threshold | Sensitivity | Specificity | PPV | NPV |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|

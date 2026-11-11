@@ -7,7 +7,7 @@ name = "india-diabetes-risk-screener"
 version = "0.1.0"
 description = "India-specific diabetes risk screener built on NFHS-5 (2019-21)."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "pandas>=2.0",
     "numpy>=1.24",
@@ -36,4 +36,4 @@ pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py314"
