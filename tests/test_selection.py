@@ -157,7 +157,7 @@ def test_selection_record_carries_oof_evidence_for_exactly_the_development_rows(
         assert sum(row["n"] for row in sex) == int(covered.sum())
 
         assert len(record.reliability_curve) == config.reliability_bins
-        assert len(record.net_benefit) == 16
+        assert len(record.net_benefit) == len(NET_BENEFIT_THRESHOLDS)
         assert [row["threshold"] for row in record.net_benefit] == list(
             NET_BENEFIT_THRESHOLDS
         )
@@ -208,6 +208,28 @@ def test_selection_results_are_labelled_by_feature_set_and_count():
         for record in evidence.records:
             assert record.feature_set == evidence.feature_set
             assert record.feature_count == evidence.feature_count
+
+
+def test_configs_differing_only_in_feature_columns_are_distinctly_labelled():
+    features = pr_shaped_features()
+    wider = selection_config(features)
+    narrower = selection_config(features, feature_columns=PR_15_PLUS_FEATURES[:6])
+    assert wider.metadata == narrower.metadata
+    assert wider.feature_columns != narrower.feature_columns
+
+    wider_evidence = evaluate_candidates(
+        prepare_training_data(features, wider).development, wider
+    )
+    narrower_evidence = evaluate_candidates(
+        prepare_training_data(features, narrower).development, narrower
+    )
+
+    assert wider_evidence.feature_set == narrower_evidence.feature_set == "default"
+    assert wider_evidence.feature_count != narrower_evidence.feature_count
+    assert (wider_evidence.feature_set, wider_evidence.feature_count) != (
+        narrower_evidence.feature_set,
+        narrower_evidence.feature_count,
+    )
 
 
 def test_default_candidate_path_still_scores_the_default_order():
