@@ -56,6 +56,11 @@ def test_primary_config_reports_the_mandatory_and_audit_subgroups():
     assert audit == ["religion", "social_group"]
 
 
+def test_primary_config_passes_no_categorical_columns():
+    # State, religion, and social group are audit groups, not model features.
+    assert primary_15_49_config().categorical_columns == ()
+
+
 def test_primary_config_records_the_run_role_and_default_feature_variant():
     config = primary_15_49_config()
 

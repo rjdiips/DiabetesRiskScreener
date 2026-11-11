@@ -12,22 +12,24 @@ from typing import Any
 
 import pandas as pd
 
+from ._config_assembly import (
+    AGE_15_49_BANDS,
+    AGE_15_49_LABELS,
+    assemble_config,
+    run_metadata,
+    shared_subgroups,
+)
 from .feature_policy import PRIMARY_DEFAULT_FEATURES
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
 PRIMARY_RUN_NAME = "primary_irmr_15to49"
 PRIMARY_SAMPLE_LABEL = "age_15_49"
 
-PRIMARY_AGE_BANDS = (15, 25, 35, 45, 50)
-PRIMARY_AGE_LABELS = ("15-24", "25-34", "35-44", "45-49")
-
 # The documented primary analysis sample: IR/MR recodes restricted to 15-49.
 PRIMARY_REFERENCE = {
     "rows": 774_861,
     "positives": 64_526,
 }
-
-PRIMARY_CATEGORICAL_FEATURES = ("state", "religion", "social_group")
 
 _PRIMARY_RUN_ROLE = (
     "Primary IR/MR 15-49 reference model with the rich anthropometry, diet, "
@@ -38,48 +40,6 @@ _PRIMARY_RUN_ROLE = (
 _AUDIT_SUBGROUP_NOTE = (
     "Reported for the fairness audit only; not a deployed model feature."
 )
-
-
-def _primary_subgroups(
-    state_min_test_rows: int,
-) -> tuple[SubgroupSpec, ...]:
-    return (
-        SubgroupSpec(
-            name="sex",
-            column="female",
-            value_labels=((0, "male"), (1, "female")),
-        ),
-        SubgroupSpec(
-            name="age_band",
-            column="age",
-            bins=PRIMARY_AGE_BANDS,
-            labels=PRIMARY_AGE_LABELS,
-        ),
-        SubgroupSpec(name="wealth", column="wealth"),
-        SubgroupSpec(
-            name="residence",
-            column="residence",
-            value_labels=((1, "urban"), (2, "rural")),
-        ),
-        SubgroupSpec(name="education", column="education"),
-        SubgroupSpec(
-            name="state",
-            column="state",
-            minimum_test_rows=state_min_test_rows,
-        ),
-        SubgroupSpec(
-            name="religion",
-            column="religion",
-            audit_only=True,
-            note=_AUDIT_SUBGROUP_NOTE,
-        ),
-        SubgroupSpec(
-            name="social_group",
-            column="social_group",
-            audit_only=True,
-            note=_AUDIT_SUBGROUP_NOTE,
-        ),
-    )
 
 
 def primary_15_49_config(
@@ -97,44 +57,46 @@ def primary_15_49_config(
     metadata: dict | None = None,
 ) -> TrainingConfig:
     """The primary IR/MR 15-49 model from the shared training pipeline."""
-    feature_columns = PRIMARY_DEFAULT_FEATURES
-    categorical = tuple(
-        column
-        for column in feature_columns
-        if column in PRIMARY_CATEGORICAL_FEATURES
+    subgroups = shared_subgroups(
+        AGE_15_49_BANDS,
+        AGE_15_49_LABELS,
+        state_min_test_rows,
+    ) + (
+        SubgroupSpec(
+            name="religion",
+            column="religion",
+            audit_only=True,
+            note=_AUDIT_SUBGROUP_NOTE,
+        ),
+        SubgroupSpec(
+            name="social_group",
+            column="social_group",
+            audit_only=True,
+            note=_AUDIT_SUBGROUP_NOTE,
+        ),
     )
-    return TrainingConfig(
+    return assemble_config(
         name=PRIMARY_RUN_NAME,
         feature_table=feature_table,
-        feature_columns=feature_columns,
-        target_column="target",
-        secondary_target_column="target_fact_sheet",
-        target_definition="glucose > 140 OR diagnosed OR medication",
-        group_column="cluster",
-        household_column="household",
-        weight_column="weight_scaled",
+        feature_columns=PRIMARY_DEFAULT_FEATURES,
         sample_filters=(SampleFilter(column="age_15_49", values=(True,)),),
-        subgroups=_primary_subgroups(state_min_test_rows),
-        categorical_columns=categorical,
+        subgroups=subgroups,
+        metadata=run_metadata(
+            model_role="primary",
+            sample=PRIMARY_SAMPLE_LABEL,
+            run_role=_PRIMARY_RUN_ROLE,
+            audit_subgroup_note=_AUDIT_SUBGROUP_NOTE,
+            extra=metadata,
+        ),
         seed=seed,
-        n_folds=5,
-        test_fraction=0.2,
         target_sensitivity=target_sensitivity,
         bootstrap_replicates=bootstrap_replicates,
         shap_sample_size=shap_sample_size,
-        state_min_test_rows=state_min_test_rows,
-        model_params=model_params or {},
+        model_params=model_params,
         split_assignment=split_assignment,
         split_assignment_path=split_assignment_path,
         smoke_rows=smoke_rows,
-        metadata={
-            "model_role": "primary",
-            "sample": PRIMARY_SAMPLE_LABEL,
-            "run_role": _PRIMARY_RUN_ROLE,
-            "feature_variant": "default",
-            "audit_subgroup_note": _AUDIT_SUBGROUP_NOTE,
-            **(metadata or {}),
-        },
+        state_min_test_rows=state_min_test_rows,
     )
 
 
@@ -181,8 +143,6 @@ def reconcile_primary_sample(
 
 
 __all__ = [
-    "PRIMARY_AGE_BANDS",
-    "PRIMARY_AGE_LABELS",
     "PRIMARY_REFERENCE",
     "PRIMARY_RUN_NAME",
     "PRIMARY_SAMPLE_LABEL",

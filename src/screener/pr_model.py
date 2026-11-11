@@ -13,6 +13,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ._config_assembly import (
+    AGE_15_49_BANDS,
+    AGE_15_49_LABELS,
+    assemble_config,
+    run_metadata,
+    shared_subgroups,
+)
 from .feature_policy import PR_15_PLUS_FEATURES, pr_feature_set
 from .features import PR_REFERENCE_COUNTS
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
@@ -27,8 +34,6 @@ PR_15_PLUS_AGE_LABELS = (
     "60-69",
     "70+",
 )
-PR_15_49_AGE_BANDS = (15, 25, 35, 45, 50)
-PR_15_49_AGE_LABELS = ("15-24", "25-34", "35-44", "45-49")
 
 PR_CATEGORICAL_FEATURES = ("state", "religion", "social_group")
 
@@ -68,55 +73,6 @@ _PR_15_49_ROLE = (
 )
 
 
-def _pr_subgroups(
-    age_bins,
-    age_labels,
-    feature_variant: str,
-    state_min_test_rows: int,
-) -> tuple[SubgroupSpec, ...]:
-    subgroups = (
-        SubgroupSpec(
-            name="sex",
-            column="female",
-            value_labels=((0, "male"), (1, "female")),
-        ),
-        SubgroupSpec(
-            name="age_band",
-            column="age",
-            bins=tuple(age_bins),
-            labels=tuple(age_labels),
-        ),
-        SubgroupSpec(name="wealth", column="wealth"),
-        SubgroupSpec(
-            name="residence",
-            column="residence",
-            value_labels=((1, "urban"), (2, "rural")),
-        ),
-        SubgroupSpec(name="education", column="education"),
-        SubgroupSpec(
-            name="state",
-            column="state",
-            minimum_test_rows=state_min_test_rows,
-        ),
-    )
-    if feature_variant not in PR_AUDIT_FEATURE_VARIANTS:
-        return subgroups
-    return subgroups + (
-        SubgroupSpec(
-            name="religion",
-            column="religion",
-            audit_only=True,
-            note=_PR_HOUSEHOLD_HEAD_NOTE,
-        ),
-        SubgroupSpec(
-            name="social_group",
-            column="social_group",
-            audit_only=True,
-            note=_PR_HOUSEHOLD_HEAD_NOTE,
-        ),
-    )
-
-
 def _variant_run_name(name: str, feature_variant: str) -> str:
     return name if feature_variant == "default" else f"{name}_{feature_variant}"
 
@@ -153,50 +109,53 @@ def _pr_config(
         SampleFilter(column="systolic_mean", require_notna=True),
         SampleFilter(column="diastolic_mean", require_notna=True),
     )
+    subgroups = shared_subgroups(age_bins, age_labels, state_min_test_rows)
+    if feature_variant in PR_AUDIT_FEATURE_VARIANTS:
+        subgroups += (
+            SubgroupSpec(
+                name="religion",
+                column="religion",
+                audit_only=True,
+                note=_PR_HOUSEHOLD_HEAD_NOTE,
+            ),
+            SubgroupSpec(
+                name="social_group",
+                column="social_group",
+                audit_only=True,
+                note=_PR_HOUSEHOLD_HEAD_NOTE,
+            ),
+        )
 
-    run_metadata = {
-        "model_role": "sensitivity",
-        "sample": sample,
-        "run_role": run_role,
-        "feature_variant": feature_variant,
-        "audit_subgroup_note": _PR_HOUSEHOLD_HEAD_NOTE,
-        **(metadata or {}),
-    }
+    config_metadata = run_metadata(
+        model_role="sensitivity",
+        sample=sample,
+        run_role=run_role,
+        feature_variant=feature_variant,
+        audit_subgroup_note=_PR_HOUSEHOLD_HEAD_NOTE,
+        extra=metadata,
+    )
     if comparison_run is not None:
-        run_metadata["comparison_run"] = _variant_run_name(
+        config_metadata["comparison_run"] = _variant_run_name(
             comparison_run, feature_variant
         )
 
-    return TrainingConfig(
+    return assemble_config(
         name=_variant_run_name(name, feature_variant),
         feature_table=feature_table,
         feature_columns=feature_columns,
-        target_column="target",
-        secondary_target_column="target_fact_sheet",
-        target_definition="glucose > 140 OR diagnosed OR medication",
-        group_column="cluster",
-        household_column="household",
-        weight_column="weight_scaled",
         sample_filters=sample_filters,
-        subgroups=_pr_subgroups(
-            age_bins,
-            age_labels,
-            feature_variant,
-            state_min_test_rows,
-        ),
+        subgroups=subgroups,
         categorical_columns=categorical,
+        metadata=config_metadata,
         seed=seed,
-        n_folds=5,
-        test_fraction=0.2,
         target_sensitivity=target_sensitivity,
         bootstrap_replicates=bootstrap_replicates,
         shap_sample_size=shap_sample_size,
-        state_min_test_rows=state_min_test_rows,
-        model_params=model_params or {},
+        model_params=model_params,
         split_assignment=split_assignment,
         split_assignment_path=split_assignment_path,
         smoke_rows=smoke_rows,
-        metadata=run_metadata,
+        state_min_test_rows=state_min_test_rows,
     )
 
 
@@ -266,8 +225,8 @@ def pr_15_49_config(
         run_role=_PR_15_49_ROLE,
         comparison_run=PR_15_PLUS_RUN_NAME,
         sample_filter=SampleFilter(column=PR_15_49_SAMPLE_FLAG, values=(True,)),
-        age_bins=PR_15_49_AGE_BANDS,
-        age_labels=PR_15_49_AGE_LABELS,
+        age_bins=AGE_15_49_BANDS,
+        age_labels=AGE_15_49_LABELS,
         split_assignment=split_assignment,
         split_assignment_path=split_assignment_path,
         seed=seed,
@@ -393,8 +352,6 @@ def reconcile_pr_15_49_sample(
 
 
 __all__ = [
-    "PR_15_49_AGE_BANDS",
-    "PR_15_49_AGE_LABELS",
     "PR_15_49_REFERENCE",
     "PR_15_49_RUN_NAME",
     "PR_15_49_SAMPLE_FLAG",
