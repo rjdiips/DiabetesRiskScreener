@@ -525,13 +525,15 @@ def run_value(
 ) -> Any:
     """Return one run metric or run-level field without exposing nested blocks.
 
-    Names in ``COMPARISON_METRICS`` are read from the overall block, or from the
-    weighted block when ``weighted`` is true. Any other name is a run-level
-    field such as the calibrator or the selected model family.
+    A metric is read from the block it names: the overall block by default, or
+    the survey-weighted block when ``weighted`` is true. A name that block does
+    not contain is a run-level field such as the calibrator or the selected
+    model family, so it is read from the run's top level.
     """
     metrics = comparison["runs"][run_key]["metrics"]
-    if name in COMPARISON_METRICS:
-        return metrics["weighted" if weighted else "overall"].get(name)
+    block = metrics.get("weighted" if weighted else "overall")
+    if isinstance(block, Mapping) and name in block:
+        return block[name]
     return metrics.get(name)
 
 

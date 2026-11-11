@@ -289,6 +289,17 @@ def test_run_value_hides_the_nested_comparison_shape():
     assert run_value(comparison, "pr_15_plus", "does_not_exist") is None
 
 
+def test_run_value_reads_the_block_that_names_the_metric():
+    comparison = compare_primary_vs_pr(*_three_runs())
+    metrics = comparison["runs"]["primary"]["metrics"]
+    metrics["overall"]["custom_metric"] = 1.0
+    metrics["weighted"]["custom_metric"] = 2.0
+
+    assert run_value(comparison, "primary", "custom_metric") == 1.0
+    assert run_value(comparison, "primary", "custom_metric", weighted=True) == 2.0
+    assert run_value(comparison, "primary", "calibrator", weighted=True) == "isotonic"
+
+
 def test_missing_metric_and_blocks_are_reported_as_not_available():
     primary, pr_15_49, pr_15_plus = _three_runs()
     primary.metrics["overall"].pop("weighted")
