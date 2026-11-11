@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from .feature_policy import PR_15_PLUS_FEATURES, pr_feature_set
-from .features import PR_REFERENCE_COUNTS
+from .features import PR_REFERENCE_COUNTS, _compare_counts
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
 PR_15_PLUS_AGE_BANDS = (15, 25, 35, 45, 50, 60, 70, np.inf)
@@ -334,22 +334,6 @@ def pr_sample_summary(
     }
 
 
-def _reconciliation_report(summary: dict, observed: dict, reference: dict) -> dict:
-    checks = {
-        name: {
-            "expected": reference[name],
-            "observed": value,
-            "pass": value == reference[name],
-        }
-        for name, value in observed.items()
-    }
-    return {
-        "status": "pass" if all(check["pass"] for check in checks.values()) else "review",
-        "summary": summary,
-        "checks": checks,
-    }
-
-
 def reconcile_pr_bp_sample(
     features: pd.DataFrame,
     reference: dict | None = None,
@@ -364,10 +348,11 @@ def reconcile_pr_bp_sample(
         "bp_valid_age_50_plus": summary["age_50_plus_rows"],
         "bp_positive_age_50_plus": summary["age_50_plus_positives"],
     }
-    return _reconciliation_report(
-        summary,
+    reference = PR_REFERENCE_COUNTS if reference is None else reference
+    return _compare_counts(
         observed,
-        PR_REFERENCE_COUNTS if reference is None else reference,
+        {name: reference[name] for name in observed},
+        summary,
     )
 
 
@@ -385,10 +370,11 @@ def reconcile_pr_15_49_sample(
         "bp_valid_age_15_49": summary["rows"],
         "bp_positive_age_15_49": summary["positives"],
     }
-    return _reconciliation_report(
-        summary,
+    reference = PR_15_49_REFERENCE if reference is None else reference
+    return _compare_counts(
         observed,
-        PR_15_49_REFERENCE if reference is None else reference,
+        {name: reference[name] for name in observed},
+        summary,
     )
 
 

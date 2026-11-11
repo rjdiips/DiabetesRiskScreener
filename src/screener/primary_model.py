@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from .feature_policy import PRIMARY_DEFAULT_FEATURES
+from .features import _compare_counts
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
 PRIMARY_RUN_NAME = "primary_irmr_15to49"
@@ -165,19 +166,8 @@ def reconcile_primary_sample(
     """Compare the primary sample counts with the documented reference."""
     summary = primary_sample_summary(features)
     expected = PRIMARY_REFERENCE if reference is None else reference
-    checks = {
-        name: {
-            "expected": expected[name],
-            "observed": summary[name],
-            "pass": summary[name] == expected[name],
-        }
-        for name in ("rows", "positives")
-    }
-    return {
-        "status": "pass" if all(check["pass"] for check in checks.values()) else "review",
-        "summary": summary,
-        "checks": checks,
-    }
+    observed = {"rows": summary["rows"], "positives": summary["positives"]}
+    return _compare_counts(observed, {name: expected[name] for name in observed}, summary)
 
 
 __all__ = [
