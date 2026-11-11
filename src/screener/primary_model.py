@@ -20,7 +20,7 @@ from ._config_assembly import (
     shared_subgroups,
 )
 from .feature_policy import PRIMARY_DEFAULT_FEATURES
-from .features import _compare_counts
+from .features import _compare_counts, _sample_reference
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
 PRIMARY_RUN_NAME = "primary_irmr_15to49"
@@ -129,7 +129,11 @@ def reconcile_primary_sample(
     summary = primary_sample_summary(features)
     expected = PRIMARY_REFERENCE if reference is None else reference
     observed = {"rows": summary["rows"], "positives": summary["positives"]}
-    return _compare_counts(observed, {name: expected[name] for name in observed}, summary)
+    return _compare_counts(
+        observed,
+        _sample_reference(expected, observed),
+        summary,
+    )
 
 
 __all__ = [

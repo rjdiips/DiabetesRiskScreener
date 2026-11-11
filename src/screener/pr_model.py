@@ -21,7 +21,7 @@ from ._config_assembly import (
     shared_subgroups,
 )
 from .feature_policy import PR_15_PLUS_FEATURES, pr_feature_set
-from .features import PR_REFERENCE_COUNTS, _compare_counts
+from .features import PR_REFERENCE_COUNTS, _compare_counts, _sample_reference
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
 PR_15_PLUS_AGE_BANDS = (15, 25, 35, 45, 50, 60, 70, np.inf)
@@ -310,7 +310,7 @@ def reconcile_pr_bp_sample(
     reference = PR_REFERENCE_COUNTS if reference is None else reference
     return _compare_counts(
         observed,
-        {name: reference[name] for name in observed},
+        _sample_reference(reference, observed),
         summary,
     )
 
@@ -332,7 +332,7 @@ def reconcile_pr_15_49_sample(
     reference = PR_15_49_REFERENCE if reference is None else reference
     return _compare_counts(
         observed,
-        {name: reference[name] for name in observed},
+        _sample_reference(reference, observed),
         summary,
     )
 

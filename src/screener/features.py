@@ -1046,9 +1046,11 @@ def _compare_counts(
 ) -> dict:
     """Compare observed counts with a reference record and build the report.
 
-    Only names in the reference are checked; a count missing from ``observed``
-    fails its check rather than disappearing. The summary key is omitted when
-    there is none, so records without one keep their serialized shape.
+    Every name in ``reference`` is checked, so a count missing from ``observed``
+    fails its check rather than disappearing. Callers narrow a larger shared
+    reference to the counts their sample reports before calling this. The
+    summary key is omitted when there is none, so records without one keep their
+    serialized shape.
     """
     checks = {
         name: {
@@ -1062,6 +1064,11 @@ def _compare_counts(
     if summary is None:
         return {"status": status, "checks": checks}
     return {"status": status, "summary": summary, "checks": checks}
+
+
+def _sample_reference(reference: dict, observed: dict) -> dict:
+    """Narrow a full reference record to the counts this sample reports."""
+    return {name: reference[name] for name in observed}
 
 
 def reconcile_pr_audit(
