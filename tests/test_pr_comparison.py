@@ -16,7 +16,7 @@ from screener.pr_comparison import (
     load_run_result,
     render_pr_model_card_addendum,
     render_primary_vs_pr_report,
-    run_metric,
+    run_value,
     write_primary_vs_pr_report,
 )
 
@@ -277,14 +277,16 @@ def test_compare_primary_vs_pr_computes_correct_differences():
     )
 
 
-def test_run_metric_hides_the_nested_comparison_shape():
+def test_run_value_hides_the_nested_comparison_shape():
     comparison = compare_primary_vs_pr(*_three_runs())
 
-    assert run_metric(comparison, "primary", "roc_auc") == pytest.approx(0.80)
-    assert run_metric(
+    assert run_value(comparison, "primary", "roc_auc") == pytest.approx(0.80)
+    assert run_value(
         comparison, "pr_15_49", "roc_auc", weighted=True
     ) == pytest.approx(0.79)
-    assert run_metric(comparison, "pr_15_plus", "does_not_exist") is None
+    assert run_value(comparison, "pr_15_49", "calibrator") == "platt"
+    assert run_value(comparison, "primary", "selected_family") == "lightgbm"
+    assert run_value(comparison, "pr_15_plus", "does_not_exist") is None
 
 
 def test_missing_metric_and_blocks_are_reported_as_not_available():
