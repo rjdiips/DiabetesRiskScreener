@@ -16,11 +16,11 @@ from ._config_assembly import (
     AGE_15_49_BANDS,
     AGE_15_49_LABELS,
     assemble_config,
-    run_metadata,
+    config_metadata,
     shared_subgroups,
 )
 from .feature_policy import PRIMARY_DEFAULT_FEATURES
-from .features import _compare_counts
+from .features import _compare_counts, _sample_reference
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
 PRIMARY_RUN_NAME = "primary_irmr_15to49"
@@ -82,7 +82,7 @@ def primary_15_49_config(
         feature_columns=PRIMARY_DEFAULT_FEATURES,
         sample_filters=(SampleFilter(column="age_15_49", values=(True,)),),
         subgroups=subgroups,
-        metadata=run_metadata(
+        metadata=config_metadata(
             model_role="primary",
             sample=PRIMARY_SAMPLE_LABEL,
             run_role=_PRIMARY_RUN_ROLE,
@@ -129,7 +129,11 @@ def reconcile_primary_sample(
     summary = primary_sample_summary(features)
     expected = PRIMARY_REFERENCE if reference is None else reference
     observed = {"rows": summary["rows"], "positives": summary["positives"]}
-    return _compare_counts(observed, {name: expected[name] for name in observed}, summary)
+    return _compare_counts(
+        observed,
+        _sample_reference(expected, observed),
+        summary,
+    )
 
 
 __all__ = [

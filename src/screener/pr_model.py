@@ -17,11 +17,11 @@ from ._config_assembly import (
     AGE_15_49_BANDS,
     AGE_15_49_LABELS,
     assemble_config,
-    run_metadata,
+    config_metadata,
     shared_subgroups,
 )
 from .feature_policy import PR_15_PLUS_FEATURES, pr_feature_set
-from .features import PR_REFERENCE_COUNTS, _compare_counts
+from .features import PR_REFERENCE_COUNTS, _compare_counts, _sample_reference
 from .pipeline import SampleFilter, SubgroupSpec, TrainingConfig
 
 PR_15_PLUS_AGE_BANDS = (15, 25, 35, 45, 50, 60, 70, np.inf)
@@ -126,7 +126,7 @@ def _pr_config(
             ),
         )
 
-    config_metadata = run_metadata(
+    metadata_record = config_metadata(
         model_role="sensitivity",
         sample=sample,
         run_role=run_role,
@@ -135,7 +135,7 @@ def _pr_config(
         extra=metadata,
     )
     if comparison_run is not None:
-        config_metadata["comparison_run"] = _variant_run_name(
+        metadata_record["comparison_run"] = _variant_run_name(
             comparison_run, feature_variant
         )
 
@@ -146,7 +146,7 @@ def _pr_config(
         sample_filters=sample_filters,
         subgroups=subgroups,
         categorical_columns=categorical,
-        metadata=config_metadata,
+        metadata=metadata_record,
         seed=seed,
         target_sensitivity=target_sensitivity,
         bootstrap_replicates=bootstrap_replicates,
@@ -310,7 +310,7 @@ def reconcile_pr_bp_sample(
     reference = PR_REFERENCE_COUNTS if reference is None else reference
     return _compare_counts(
         observed,
-        {name: reference[name] for name in observed},
+        _sample_reference(reference, observed),
         summary,
     )
 
@@ -332,7 +332,7 @@ def reconcile_pr_15_49_sample(
     reference = PR_15_49_REFERENCE if reference is None else reference
     return _compare_counts(
         observed,
-        {name: reference[name] for name in observed},
+        _sample_reference(reference, observed),
         summary,
     )
 

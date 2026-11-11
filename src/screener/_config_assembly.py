@@ -51,7 +51,7 @@ def shared_subgroups(
     )
 
 
-def run_metadata(
+def config_metadata(
     *,
     model_role: str,
     sample: str,
@@ -60,7 +60,7 @@ def run_metadata(
     feature_variant: str = "default",
     extra: dict | None = None,
 ) -> dict:
-    """The run metadata both families record, in a fixed key order."""
+    """The pipeline config metadata both families record, in a fixed key order."""
     return {
         "model_role": model_role,
         "sample": sample,
@@ -80,17 +80,21 @@ def assemble_config(
     subgroups: tuple[SubgroupSpec, ...],
     metadata: dict,
     categorical_columns: tuple[str, ...] = (),
-    seed: int = 42,
-    target_sensitivity: float = 0.8,
-    bootstrap_replicates: int = 1_000,
-    shap_sample_size: int = 5_000,
-    model_params: dict[str, Any] | None = None,
-    split_assignment: pd.DataFrame | None = None,
-    split_assignment_path: str | None = None,
-    smoke_rows: int | None = None,
-    state_min_test_rows: int = 500,
+    seed: int,
+    target_sensitivity: float,
+    bootstrap_replicates: int,
+    shap_sample_size: int,
+    model_params: dict[str, Any] | None,
+    split_assignment: pd.DataFrame | None,
+    split_assignment_path: str | None,
+    smoke_rows: int | None,
+    state_min_test_rows: int,
 ) -> TrainingConfig:
-    """Build a TrainingConfig with the pipeline shape both families share."""
+    """Build a TrainingConfig with the pipeline shape both families share.
+
+    Every pipeline setting is required, so the assembler never restates a
+    ``TrainingConfig`` default that a family builder could leave behind.
+    """
     return TrainingConfig(
         name=name,
         feature_table=feature_table,
