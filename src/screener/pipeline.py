@@ -293,12 +293,12 @@ class PreparedData:
     """The development and test rows produced by :func:`prepare_training_data`.
 
     ``development`` and ``test`` are disjoint and together are exactly the used
-    sample. ``assignment`` holds one row per used respondent, ``sample`` is the
+    sample. ``assignment`` holds one row per used respondent, ``filtered`` is the
     filtered frame before the split columns are merged, and the counts and
     summary describe the same partition.
     """
 
-    sample: pd.DataFrame
+    filtered: pd.DataFrame
     development: pd.DataFrame
     test: pd.DataFrame
     assignment: pd.DataFrame
@@ -331,6 +331,8 @@ def _stratified_sample(
 
 
 def _prepare_sample(features: pd.DataFrame, config: TrainingConfig) -> tuple[pd.DataFrame, dict]:
+    if features is None or features.empty:
+        raise ValueError("feature table is empty")
     required = [
         "case_id",
         config.group_column,
@@ -455,7 +457,7 @@ def prepare_training_data(
         )
 
     return PreparedData(
-        sample=frame,
+        filtered=frame,
         development=development,
         test=test,
         assignment=assignment,
@@ -490,16 +492,23 @@ def _param_candidates(config: TrainingConfig, family: str) -> list[dict]:
 def _resolve_candidates(config: TrainingConfig) -> list[Candidate]:
     """The candidates to score: the pinned one, the configured list, or the defaults."""
     if config.pinned_candidate is not None:
-        return [config.pinned_candidate]
-    if config.candidates:
-        return list(config.candidates)
+        candidates = [config.pinned_candidate]
+    elif config.candidates:
+        candidates = list(config.candidates)
+    else:
+        candidates = []
+        for family in ("prevalence", "logistic", "lightgbm"):
+            settings = _param_candidates(config, family)
+            for index, params in enumerate(settings):
+                label = family if len(settings) == 1 else f"{family}[{index}]"
+                candidates.append(Candidate(label=label, family=family, params=params))
 
-    candidates = []
-    for family in ("prevalence", "logistic", "lightgbm"):
-        settings = _param_candidates(config, family)
-        for index, params in enumerate(settings):
-            label = family if len(settings) == 1 else f"{family}[{index}]"
-            candidates.append(Candidate(label=label, family=family, params=params))
+    labels = [candidate.label for candidate in candidates]
+    duplicates = sorted({label for label in labels if labels.count(label) > 1})
+    if duplicates:
+        raise ValueError("duplicate candidate labels: " + ", ".join(duplicates))
+    if any(not label for label in labels):
+        raise ValueError("candidate labels must not be empty")
     return candidates
 
 
@@ -636,6 +645,22 @@ def _select_and_refit(
         "selected_label": selected["label"],
         "selected_family": selected["family"],
         "selected_params": selected["params"],
+        "tuning_record": {
+            "trial_count": len(trials),
+            "selected": {
+                "label": selected["label"],
+                "family": selected["family"],
+                "params": selected["params"],
+            },
+            "search_space": [
+                {
+                    "label": trial["label"],
+                    "family": trial["family"],
+                    "params": trial["params"],
+                }
+                for trial in trials
+            ],
+        },
         "trials": summary,
         "category_levels": levels,
     }
@@ -671,7 +696,7 @@ def _audit_notes(config: TrainingConfig) -> list[str]:
     return sorted(notes)
 
 
-def _subgroup_metrics(
+def subgroup_metrics(
     frame: pd.DataFrame,
     target_column: str,
     probabilities: np.ndarray,
@@ -679,14 +704,16 @@ def _subgroup_metrics(
     overall: dict,
     split_label: str,
 ) -> pd.DataFrame:
+    """Return one audit row per subgroup, labelled with the split it scored."""
     rows = []
     target = frame[target_column].to_numpy()
+    scored = np.isfinite(probabilities)
     for spec in config.subgroups:
         labels = spec.group_values(frame)
         for group in sorted(labels.unique()):
-            mask = labels.eq(group).to_numpy()
+            mask = labels.eq(group).to_numpy() & scored
             n = int(mask.sum())
-            if spec.minimum_test_rows and n < spec.minimum_test_rows:
+            if not n or (spec.minimum_test_rows and n < spec.minimum_test_rows):
                 continue
             metrics = binary_metrics(
                 target[mask],
@@ -1317,7 +1344,7 @@ def run_training_pipeline(
     """Train, calibrate, evaluate, and document one model run."""
     started_at = _utc_now()
     prepared = prepare_training_data(features, config)
-    frame = prepared.sample
+    frame = prepared.filtered
     row_counts = prepared.row_counts
     assignment = prepared.assignment
     source = prepared.split_source
@@ -1403,8 +1430,8 @@ def run_training_pipeline(
             ),
         }
 
-    subgroup_metrics = _subgroup_metrics(
-        test, config.target_column, probabilities, config, overall, "test"
+    subgroup_rows = subgroup_metrics(
+        test, config.target_column, probabilities, config, overall, TEST_SPLIT
     )
     calibration_curve = pd.DataFrame(
         reliability_curve(
@@ -1542,7 +1569,7 @@ def run_training_pipeline(
     artifacts["run_metadata"] = _write_json(run_dir / "run_metadata.json", metadata)
     artifacts["metrics"] = _write_json(run_dir / "metrics.json", metrics)
     artifacts["subgroup_metrics"] = _write_frame(
-        subgroup_metrics, run_dir / "subgroup_metrics.csv"
+        subgroup_rows, run_dir / "subgroup_metrics.csv"
     )
     artifacts["calibration_curve"] = _write_frame(
         calibration_curve, run_dir / "calibration_curve.csv"
@@ -1562,7 +1589,7 @@ def run_training_pipeline(
         )
     artifacts["results_report"] = run_dir / "results_report.md"
     artifacts["results_report"].write_text(
-        _results_report(config, metrics, subgroup_metrics, importance, metadata),
+        _results_report(config, metrics, subgroup_rows, importance, metadata),
         encoding="utf-8",
     )
     artifacts["model_card"] = run_dir / "model_card.md"
@@ -1579,7 +1606,7 @@ def run_training_pipeline(
         split_assignment=split_frame,
         model=bundle,
         metrics=metrics,
-        subgroup_metrics=subgroup_metrics,
+        subgroup_metrics=subgroup_rows,
         calibration_curve=calibration_curve,
         threshold_analysis=operating_points,
         feature_importance=importance,

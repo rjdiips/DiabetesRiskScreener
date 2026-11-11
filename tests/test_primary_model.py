@@ -79,6 +79,16 @@ def test_primary_config_resolves_any_named_feature_set():
         assert len(config.feature_columns) < len(PRIMARY_DEFAULT_FEATURES)
 
 
+def test_primary_config_records_the_requested_set_as_the_feature_variant():
+    assert (
+        primary_15_49_config(feature_set="measurement_full").metadata["feature_variant"]
+        == "default"
+    )
+    config = primary_15_49_config(feature_set="questionnaire_only")
+
+    assert config.metadata["feature_variant"] == "questionnaire_only"
+
+
 def test_primary_config_rejects_an_unknown_feature_set():
     with pytest.raises(ValueError, match="unknown primary feature-set"):
         primary_15_49_config(feature_set="everything")

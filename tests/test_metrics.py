@@ -147,6 +147,24 @@ def test_net_benefit_table_keeps_its_shape_for_an_empty_sample():
     assert all(row["net_benefit"] is None for row in table)
 
 
+def test_net_benefit_table_uses_survey_weights_when_given():
+    # Same four respondents as the worked example, with the last negative
+    # double weighted. Total weight 5.
+    # Threshold 0.05: TP weight 2, FP weight 1 (the 0.075 row) -> 2/5 - (1/5)(0.05/0.95).
+    # Threshold 0.08: the false positive drops out -> 2/5.
+    # Threshold 0.20: only the 0.25 positive is treated -> 1/5.
+    table = net_benefit_table(
+        [1, 1, 0, 0],
+        [0.19, 0.25, 0.075, 0.02],
+        sample_weight=[1, 1, 1, 2],
+    )
+
+    assert len(table) == 16
+    assert math.isclose(table[0]["net_benefit"], 0.3894736842, abs_tol=1e-6)
+    assert math.isclose(table[3]["net_benefit"], 0.4, abs_tol=1e-6)
+    assert math.isclose(table[-1]["net_benefit"], 0.2, abs_tol=1e-6)
+
+
 def test_weighted_metrics_report_weighted_prevalence():
     metrics = binary_metrics(
         [0, 0, 1],

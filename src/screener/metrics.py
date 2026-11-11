@@ -262,24 +262,31 @@ NET_BENEFIT_THRESHOLDS = tuple(round(0.05 + 0.01 * step, 2) for step in range(16
 def net_benefit_table(
     y_true,
     y_score,
+    sample_weight=None,
 ) -> list[dict]:
     """Return net benefit at every screening threshold from 0.05 to 0.20.
 
     Net benefit is ``TP/n - (FP/n) * pt/(1-pt)``, so a sample with only one
     class still reports a finite value and an empty sample reports ``None``.
+    With ``sample_weight`` the rates are over total weight instead of row count.
     """
-    y, p, _ = _clean(y_true, y_score)
+    y, p, w = _clean(y_true, y_score, sample_weight)
     n = len(y)
+    total = float(np.sum(w)) if w is not None else float(n)
     rows = []
     for threshold in NET_BENEFIT_THRESHOLDS:
-        if not n:
+        if not n or total <= 0:
             rows.append({"threshold": threshold, "net_benefit": None})
             continue
         predicted = p >= threshold
-        tp = int(np.sum(predicted & (y == 1)))
-        fp = int(np.sum(predicted & (y == 0)))
+        if w is None:
+            tp = float(np.sum(predicted & (y == 1)))
+            fp = float(np.sum(predicted & (y == 0)))
+        else:
+            tp = float(np.sum(w[predicted & (y == 1)]))
+            fp = float(np.sum(w[predicted & (y == 0)]))
         weight = threshold / (1.0 - threshold)
-        value = tp / n - (fp / n) * weight
+        value = tp / total - (fp / total) * weight
         rows.append({"threshold": threshold, "net_benefit": round(float(value), 6)})
     return rows
 
