@@ -372,6 +372,8 @@ class TrainingConfig:
     model_params: dict[str, Any] = field(default_factory=dict)
     candidates: tuple[Candidate, ...] = ()
     pinned_candidate: Candidate | None = None
+    seed_averaging: bool = False
+    seed_averaging_seeds: tuple[int, ...] = ()
     calibration_methods: tuple[str, ...] = ("isotonic", "platt")
     split_assignment: pd.DataFrame | None = field(default=None, repr=False)
     split_assignment_path: str | None = None
@@ -410,6 +412,8 @@ class TrainingConfig:
                 if self.pinned_candidate is not None
                 else None
             ),
+            "seed_averaging": self.seed_averaging,
+            "seed_averaging_seeds": list(self.seed_averaging_seeds),
             "calibration_methods": list(self.calibration_methods),
             "split_assignment_supplied": self.split_assignment is not None,
             "split_assignment_path": self.split_assignment_path,
@@ -1634,13 +1638,31 @@ def run_training_pipeline(
 
     evidence = evaluate_candidates(development, config)
     selected_record, selection = _select_record(evidence)
-    bundle = evidence.fit_handle.fit(selected_record.label)
+    if config.seed_averaging:
+        from .seed_averaging import DEFAULT_SEEDS, fit_seed_averaged
+
+        averaged = fit_seed_averaged(
+            evidence,
+            selected_record.label,
+            seeds=config.seed_averaging_seeds or DEFAULT_SEEDS,
+        )
+        bundle = averaged.bundle
+        seed_averaging = averaged.report
+    else:
+        bundle = evidence.fit_handle.fit(selected_record.label)
+        seed_averaging = None
     final_model = bundle.model
     calibrator = bundle.calibrator
     threshold = bundle.threshold
     calibration_report = selected_record.calibration_report
     threshold_report = selected_record.threshold_report
     selection["category_levels"] = bundle.category_levels
+    bundle.metadata["seeds"] = (
+        seed_averaging["seeds"] if seed_averaging is not None else [config.seed]
+    )
+    bundle.metadata["ensemble_size"] = (
+        seed_averaging["ensemble_size"] if seed_averaging is not None else 1
+    )
 
     covered = selected_record.covered
     oof_target = selected_record.target[covered]
@@ -1685,6 +1707,7 @@ def run_training_pipeline(
         "threshold_selection": threshold_report,
         "split": split_summary,
         "calibrator": getattr(calibrator, "method", "unknown"),
+        "seed_averaging": seed_averaging,
     }
 
     secondary = config.secondary_target_column
@@ -1716,7 +1739,10 @@ def run_training_pipeline(
         target_sensitivity=config.target_sensitivity,
     )
     importance, importance_kind = _feature_importance(
-        final_model, selected_record.family, config.feature_columns
+        # Explain the underlying estimator, not the seed-averaging wrapper.
+        getattr(final_model, "models", (final_model,))[0],
+        selected_record.family,
+        config.feature_columns,
     )
 
     shap_sample = min(config.shap_sample_size, len(test))
@@ -1735,7 +1761,7 @@ def run_training_pipeline(
     )
     run_dir = _run_directory(Path(output_dir), config, fingerprint)
     shap_summary, shap_values, shap_report = _shap_summary(
-        final_model,
+        getattr(final_model, "models", (final_model,))[0],
         selected_record.family,
         shap_matrix,
         shap_target,
@@ -1787,6 +1813,8 @@ def run_training_pipeline(
             "params": selected_record.params,
             "importance_type": importance_kind,
         },
+        "seed_averaging": seed_averaging,
+        "selected_bundle": config.metadata.get("selected_bundle"),
         "shap": shap_report,
         "extra": config.metadata,
     }
@@ -1797,6 +1825,8 @@ def run_training_pipeline(
             "dataset_fingerprint": fingerprint,
         }
     )
+    if config.metadata.get("selected_bundle"):
+        bundle.metadata["selected_bundle"] = config.metadata["selected_bundle"]
 
     artifacts: dict[str, Path] = {}
     split_frame = assignment[

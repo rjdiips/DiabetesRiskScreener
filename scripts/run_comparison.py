@@ -51,6 +51,12 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=ARTIFACTS_DIR / "comparison",
     )
+    parser.add_argument(
+        "--save-split-assignment",
+        type=Path,
+        default=None,
+        help="Write the generated split assignment here so every bundle shares it.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--sensitivity", type=float, default=0.8)
     parser.add_argument(
@@ -92,6 +98,11 @@ def main(argv: list[str] | None = None) -> int:
         smoke_rows=args.smoke_rows if args.smoke else None,
     )
     prepared = prepare_training_data(features, config)
+    saved_split = None
+    if args.save_split_assignment is not None:
+        args.save_split_assignment.parent.mkdir(parents=True, exist_ok=True)
+        prepared.assignment.to_parquet(args.save_split_assignment, index=False)
+        saved_split = relative_to_project(args.save_split_assignment)
     artifact = run_comparison(
         prepared.development,
         config,
@@ -110,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
                 "winner": None if winner is None else winner["label"],
                 "vetoed": sorted(artifact["vetoes"]),
                 "output": str(args.output / args.feature_set),
+                "split_assignment": saved_split,
             },
             indent=2,
         )
