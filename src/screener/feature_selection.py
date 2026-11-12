@@ -16,7 +16,12 @@ import numpy as np
 import pandas as pd
 from sklearn.inspection import permutation_importance
 
-from .calibration import select_calibrator, select_threshold
+from .calibration import (
+    select_calibrator,
+    select_threshold,
+    select_thresholds_by_group,
+    thresholds_for_groups,
+)
 from .comparison import reliable_sensitivity_gap
 from .metrics import binary_metrics
 from .modeling import (
@@ -32,6 +37,7 @@ from .pipeline import (
     _jsonable,
     evaluate_candidates,
     subgroup_metrics,
+    threshold_group_labels,
 )
 from .promotion import paired_roc_auc_delta_ci, promotion_decision
 
@@ -218,10 +224,24 @@ def run_feature_selection_experiment(
         calibrated,
         target_sensitivity=config.target_sensitivity,
     )
+    age_labels = threshold_group_labels(development, config)
+    if age_labels is not None:
+        group_rule = select_thresholds_by_group(
+            covered_target,
+            calibrated,
+            age_labels[covered],
+            target_sensitivity=config.target_sensitivity,
+        )
+        row_thresholds = thresholds_for_groups(group_rule, age_labels)
+    else:
+        group_rule = None
+        row_thresholds = np.full(
+            len(development), threshold_report["threshold"], dtype=float
+        )
     overall = binary_metrics(
         covered_target,
         calibrated,
-        threshold=threshold_report["threshold"],
+        threshold=row_thresholds[covered],
         n_bins=config.reliability_bins,
     )
     subgroups = subgroup_metrics(
@@ -231,22 +251,40 @@ def run_feature_selection_experiment(
         config,
         overall,
         SELECTION_SPLIT_LABEL,
+        thresholds=row_thresholds,
     )
 
     shared = winner.covered & covered
     if not shared.any():
         raise ValueError("the winner and experiment share no out-of-fold predictions")
     shared_target = target[shared]
+    winner_rule = winner.threshold_rule or {}
+    winner_thresholds = np.asarray(
+        [
+            float(
+                winner_rule.get("thresholds", {}).get(
+                    str(label),
+                    winner_rule.get("default_threshold", threshold_report["threshold"]),
+                )
+            )
+            for label in (age_labels[shared] if age_labels is not None else [])
+        ],
+        dtype=float,
+    )
+    if not winner_rule or age_labels is None:
+        winner_thresholds = np.full(
+            len(shared), winner.threshold_report["threshold"], dtype=float
+        )
     winner_metrics = binary_metrics(
         shared_target,
         winner.oof_probabilities[shared],
-        threshold=winner.threshold_report["threshold"],
+        threshold=winner_thresholds,
         n_bins=config.reliability_bins,
     )
     experiment_metrics = binary_metrics(
         shared_target,
         probabilities[shared],
-        threshold=threshold_report["threshold"],
+        threshold=row_thresholds[shared],
         n_bins=config.reliability_bins,
     )
     low, high = paired_roc_auc_delta_ci(
@@ -299,6 +337,7 @@ def run_feature_selection_experiment(
                 "winner": winner.metrics,
                 "experiment": overall,
             },
+            "age_band_thresholds": group_rule,
             "winner_metrics": winner_metrics,
             "experiment_metrics": experiment_metrics,
             "delta_roc_auc": decision["delta_roc_auc"],
