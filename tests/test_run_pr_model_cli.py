@@ -21,3 +21,21 @@ def test_15_49_run_refuses_to_bypass_the_15_plus_split_assignment(capsys):
 
     assert exit_code == 2
     assert "must reuse the PR 15+ split assignment" in capsys.readouterr().err
+
+
+def test_comparison_candidates_flag_expands_the_run_to_the_shortlist():
+    script = _load_script()
+    from screener.comparison import comparison_candidates
+
+    default_config = script._CONFIG_BUILDERS[script.SAMPLE_15_PLUS]()
+
+    shortlist = script.configure_candidates(default_config, True)
+
+    assert default_config.candidates == ()
+    assert len(shortlist.candidates) == 22
+    assert shortlist.candidates == comparison_candidates()
+    assert shortlist.metadata["candidate_set"] == "shortlist"
+    assert (
+        script.configure_candidates(default_config, False).metadata["candidate_set"]
+        == "default"
+    )

@@ -368,6 +368,43 @@ def test_report_states_sample_and_feature_differences_without_declaring_a_winner
     assert "female share" in report.lower()
 
 
+def test_comparison_records_the_primary_selected_bundle():
+    primary, pr_15_49, pr_15_plus = _three_runs()
+    primary.run_metadata["selected_bundle"] = "measurement_no_bp"
+
+    comparison = compare_primary_vs_pr(primary, pr_15_49, pr_15_plus)
+
+    assert comparison["selected_bundle"] == "measurement_no_bp"
+    assert comparison["runs"]["primary"]["selected_bundle"] == "measurement_no_bp"
+    report = render_primary_vs_pr_report(comparison)
+    assert (
+        "- The primary run selected the `measurement_no_bp` bundle (32 features)."
+        in report
+    )
+    assert (
+        "The PR runs keep the PR 12-feature set and do not inherit the primary "
+        "bundle choice."
+    ) in report
+
+
+def test_selected_bundle_falls_back_to_config_metadata():
+    primary, pr_15_49, pr_15_plus = _three_runs()
+    primary.config.metadata["selected_bundle"] = "measurement_no_bp"
+
+    comparison = compare_primary_vs_pr(primary, pr_15_49, pr_15_plus)
+
+    assert comparison["selected_bundle"] == "measurement_no_bp"
+
+
+def test_report_renders_without_a_primary_selected_bundle():
+    comparison = compare_primary_vs_pr(*_three_runs())
+
+    assert comparison["selected_bundle"] is None
+    report = render_primary_vs_pr_report(comparison)
+    assert "do not inherit the primary bundle choice" not in report
+    assert "## Sample differences" in report
+
+
 def test_model_card_addendum_covers_required_sections_and_statements():
     comparison = compare_primary_vs_pr(*_three_runs())
 
