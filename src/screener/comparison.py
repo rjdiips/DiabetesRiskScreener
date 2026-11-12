@@ -254,6 +254,7 @@ def build_comparison_artifact(
         "smoke": smoke,
         "rule": PREREGISTERED_RULE,
         "candidates": candidates,
+        "candidate_labels": [item["label"] for item in candidates],
         "ranking": [item["label"] for item in ranked],
         "vetoes": {
             item["label"]: item["vetoes"]
@@ -305,6 +306,65 @@ def choose_bundle(bundles: list[dict]) -> dict:
             item["winner"]["brier"],
         ),
     )
+
+
+ALLOWED_TEST_KEYS = {"test_evaluated_once", "test_metrics"}
+
+
+def _keys(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from _keys(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _keys(item)
+
+
+def assert_no_test_metrics(artifact: dict) -> None:
+    """Refuse a comparison artifact that carries test evidence for a non-winner."""
+    winner = artifact.get("winner") or {}
+    winner_label = winner.get("label")
+    for candidate in artifact.get("candidates", []):
+        test_keys = sorted(
+            {key for key in _keys(candidate) if "test" in key.lower()}
+        )
+        if test_keys and candidate.get("label") != winner_label:
+            raise ValueError(
+                f"non-winner candidate '{candidate.get('label')}' carries "
+                "test-derived keys: " + ", ".join(test_keys)
+            )
+        if test_keys:
+            raise ValueError(
+                "test metrics belong in the winner record, not a candidate record"
+            )
+
+    unexpected = sorted(
+        {key for key in _keys(artifact) if "test" in key.lower()}
+        - ALLOWED_TEST_KEYS
+    )
+    if unexpected:
+        raise ValueError(
+            "comparison artifact carries test-derived keys: "
+            + ", ".join(unexpected)
+        )
+
+
+def attach_winner_test_metrics(
+    artifact: dict,
+    *,
+    final_run: str,
+    test_metrics: dict,
+) -> dict:
+    """Point the winner at its final run and attach that run's test metrics."""
+    if artifact.get("winner") is None:
+        raise ValueError("the comparison has no winner to attach test metrics to")
+    assert_no_test_metrics(artifact)
+    artifact["winner"]["final_run"] = final_run
+    artifact["winner"]["test_metrics"] = test_metrics
+    artifact["test_evaluated_once"] = True
+    assert_no_test_metrics(artifact)
+    return artifact
 
 
 def _metric_row(item: dict) -> str:
@@ -372,11 +432,22 @@ def render_comparison(artifact: dict) -> str:
         key=lambda item: item["rank"],
     )
     lines.extend(_metric_row(item) for item in ranked)
+    if winner and winner.get("final_run"):
+        lines.extend(
+            [
+                "",
+                f"Final run: `{winner['final_run']}`",
+                "",
+                "The test split was evaluated once for the chosen winner; no",
+                "non-winner record carries test metrics.",
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 
 def write_comparison_artifacts(artifact: dict, output_dir: str | Path) -> dict:
     """Write ``comparison.json`` and ``comparison.md`` under ``output_dir``."""
+    assert_no_test_metrics(artifact)
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     json_path = output / "comparison.json"
@@ -418,6 +489,8 @@ __all__ = [
     "PREVALENCE_LABEL",
     "SUBGROUP_SENSITIVITY_MARGIN",
     "TUNING_SETTINGS",
+    "assert_no_test_metrics",
+    "attach_winner_test_metrics",
     "build_comparison_artifact",
     "choose_bundle",
     "comparison_candidates",

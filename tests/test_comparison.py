@@ -9,13 +9,15 @@ from test_pipeline import LIGHTGBM_TEST_PARAMS, pr_shaped_features
 from screener.comparison import (
     BUNDLE_BRIER_MARGIN,
     BUNDLE_PR_AUC_MARGIN,
+    attach_winner_test_metrics,
     choose_bundle,
     comparison_candidates,
     comparison_config,
     rank_candidates,
     run_comparison,
+    write_comparison_artifacts,
 )
-from screener.pipeline import Candidate
+from screener.pipeline import Candidate, prepare_training_data
 from screener.pr_model import pr_15_plus_config
 from screener.splits import assign_pr_splits
 
@@ -33,6 +35,26 @@ FAST_PARAMS = {
     },
     "lightgbm_monotone": LIGHTGBM_TEST_PARAMS,
 }
+
+
+def fast_config(features, *, feature_set="questionnaire_only"):
+    """A three-fold comparison config with one fast setting per family."""
+    assignment = assign_pr_splits(features, seed=42, n_folds=3)
+    candidates = tuple(
+        Candidate(label=family, family=family, params=params)
+        for family, params in FAST_PARAMS.items()
+    ) + (Candidate(label="B0-prevalence", family="prevalence"),)
+    return replace(
+        pr_15_plus_config(
+            split_assignment=assignment,
+            seed=42,
+            bootstrap_replicates=5,
+            shap_sample_size=10,
+            metadata={"feature_set": feature_set},
+        ),
+        n_folds=3,
+        candidates=candidates,
+    )
 
 
 def candidate(
@@ -209,24 +231,7 @@ def test_comparison_config_records_the_feature_set():
 
 def test_comparison_runner_writes_out_of_fold_only_artifacts(tmp_path):
     features = pr_shaped_features()
-    assignment = assign_pr_splits(features, seed=42, n_folds=3)
-    candidates = tuple(
-        Candidate(label=family, family=family, params=params)
-        for family, params in FAST_PARAMS.items()
-    ) + (Candidate(label="B0-prevalence", family="prevalence"),)
-    config = replace(
-        pr_15_plus_config(
-            split_assignment=assignment,
-            seed=42,
-            bootstrap_replicates=5,
-            shap_sample_size=10,
-            metadata={"feature_set": "questionnaire_only"},
-        ),
-        n_folds=3,
-        candidates=candidates,
-    )
-    from screener.pipeline import prepare_training_data
-
+    config = fast_config(features)
     prepared = prepare_training_data(features, config)
 
     artifact = run_comparison(
@@ -244,7 +249,7 @@ def test_comparison_runner_writes_out_of_fold_only_artifacts(tmp_path):
     assert artifact["feature_set"] == "questionnaire_only"
     assert artifact["selection_split"] == "development_oof"
     assert artifact["test_evaluated_once"] is False
-    assert len(artifact["candidates"]) == len(candidates)
+    assert len(artifact["candidates"]) == len(FAST_PARAMS) + 1
     assert len(artifact["ranking"]) == len(FAST_PARAMS)
     assert artifact["winner"] is not None
     assert artifact["winner"]["family"] != "prevalence"
@@ -264,3 +269,91 @@ def test_comparison_runner_writes_out_of_fold_only_artifacts(tmp_path):
 
     walk(artifact)
     assert {key for key in keys if "test" in key.lower()} == {"test_evaluated_once"}
+
+
+def test_winner_test_metrics_attach_only_to_the_winner(tmp_path):
+    features = pr_shaped_features()
+    config = fast_config(features)
+    prepared = prepare_training_data(features, config)
+    artifact = run_comparison(
+        prepared.development,
+        config,
+        output_dir=tmp_path,
+        bundle="measurement_full",
+    )
+    winner_label = artifact["winner"]["label"]
+
+    attach_winner_test_metrics(
+        artifact,
+        final_run="artifacts/primary/run_x",
+        test_metrics={"roc_auc": 0.71, "pr_auc": 0.20},
+    )
+
+    assert artifact["test_evaluated_once"] is True
+    assert artifact["winner"]["final_run"] == "artifacts/primary/run_x"
+    assert artifact["winner"]["test_metrics"] == {"roc_auc": 0.71, "pr_auc": 0.20}
+    assert all("test_metrics" not in item for item in artifact["candidates"])
+    assert all(
+        item["label"] == winner_label or "final_run" not in item
+        for item in artifact["candidates"]
+    )
+    write_comparison_artifacts(artifact, tmp_path / "attached")
+    assert "artifacts/primary/run_x" in (
+        tmp_path / "attached" / "comparison.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_writer_refuses_a_non_winner_test_block(tmp_path):
+    features = pr_shaped_features()
+    config = fast_config(features)
+    prepared = prepare_training_data(features, config)
+    artifact = run_comparison(
+        prepared.development,
+        config,
+        output_dir=tmp_path,
+        bundle="measurement_full",
+    )
+    non_winner = next(
+        item
+        for item in artifact["candidates"]
+        if item["label"] != artifact["winner"]["label"]
+        and item["family"] != "prevalence"
+    )
+    non_winner["test_metrics"] = {"roc_auc": 0.99}
+
+    with pytest.raises(ValueError, match="non-winner"):
+        write_comparison_artifacts(artifact, tmp_path / "bad")
+
+
+def test_sentinel_test_rows_cannot_reach_the_comparison_artifact(tmp_path):
+    features = pr_shaped_features()
+    config = fast_config(features)
+    prepared = prepare_training_data(features, config)
+    baseline = run_comparison(
+        prepared.development,
+        config,
+        output_dir=tmp_path / "baseline",
+        bundle="measurement_full",
+    )
+
+    sentinel = prepared.test["case_id"].iloc[0]
+    corrupted = features.copy()
+    mask = corrupted["case_id"].eq(sentinel)
+    corrupted.loc[mask, "target"] = 1
+    corrupted.loc[mask, "wealth"] = 987_654_321
+    corrupted.loc[mask, "systolic_mean"] = 987_654_321.0
+    poisoned = prepare_training_data(corrupted, config)
+    assert sentinel in set(poisoned.test["case_id"])
+    assert sentinel not in set(poisoned.development["case_id"])
+
+    artifact = run_comparison(
+        poisoned.development,
+        config,
+        output_dir=tmp_path / "poisoned",
+        bundle="measurement_full",
+    )
+
+    assert artifact == baseline
+    text = (tmp_path / "poisoned" / "comparison.json").read_text(encoding="utf-8")
+    assert sentinel not in text
+    assert "987654321" not in text
