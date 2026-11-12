@@ -395,6 +395,54 @@ def _number(value) -> str:
     return "—" if value is None else f"{value:.4f}"
 
 
+def _exploration_lines(artifact: dict) -> list[str]:
+    experiments = artifact.get("exploration") or {}
+    if not experiments:
+        return []
+    lines = [
+        "",
+        "## Exploration",
+        "",
+        (
+            "Post-freeze experiments are reported for transparency. Exploration "
+            "does not change the deployed artifact unless promoted; a "
+            "non-promoted result changes no winner or test block."
+        ),
+        "",
+    ]
+    for name, result in experiments.items():
+        decision = result.get("decision") or {}
+        conditions = decision.get("conditions") or {}
+        interval = result.get("delta_roc_auc_ci")
+        interval_text = (
+            " (95% CI n/a)"
+            if not interval
+            else f" (95% CI {_number(interval[0])} to {_number(interval[1])})"
+        )
+        failed = [condition for condition, held in conditions.items() if not held]
+        lines += [
+            f"### {name}",
+            "",
+            f"- Experiment: `{result.get('experiment', 'unknown')}`",
+            f"- Promoted: {'yes' if decision.get('promoted') else 'no'}",
+            (
+                f"- Δ ROC-AUC: {_number(result.get('delta_roc_auc'))}"
+                f"{interval_text}"
+            ),
+            f"- Δ Brier: {_number(result.get('delta_brier'))}",
+            (
+                "- Max reliable subgroup sensitivity gap: "
+                f"{_number(result.get('max_reliable_sensitivity_gap'))}"
+            ),
+            (
+                "- Failed conditions: "
+                + (", ".join(failed) if failed else "none")
+            ),
+            "",
+        ]
+    return lines
+
+
 def render_comparison(artifact: dict) -> str:
     """The human-readable comparison report."""
     winner = artifact["winner"]
@@ -470,6 +518,7 @@ def render_comparison(artifact: dict) -> str:
             f"`{json.dumps(selected['params'], sort_keys=True)}` | "
             f"{tuning['trial_count']} |"
         )
+    lines.extend(_exploration_lines(artifact))
     if winner and winner.get("final_run"):
         lines.extend(
             [

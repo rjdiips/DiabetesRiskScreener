@@ -10,6 +10,7 @@ from screener.modeling import (
     DEFAULT_CATBOOST_PARAMS,
     DEFAULT_LIGHTGBM_PARAMS,
     DEFAULT_LOGISTIC_PARAMS,
+    DEFAULT_MLP_PARAMS,
     MODEL_FAMILIES,
     SENSITIVITY_CONFIGS,
     SPLINE_FEATURES,
@@ -43,6 +44,12 @@ FAST_PARAMS = {
     "catboost": {"iterations": 30},
     "lightgbm": {"n_estimators": 40},
     "lightgbm_monotone": {"n_estimators": 40},
+    "mlp": {
+        "hidden_layer_sizes": (8,),
+        "max_iter": 20,
+        "batch_size": 64,
+        "n_iter_no_change": 3,
+    },
 }
 
 
@@ -165,6 +172,31 @@ def test_catboost_defaults_are_cpu_only_and_cap_iterations():
     assert params["task_type"] == "CPU"
     assert params["iterations"] == DEFAULT_CATBOOST_PARAMS["iterations"]
     assert params["iterations"] <= 500
+
+
+def test_mlp_is_calibrated_for_scaled_numeric_features_and_returns_probabilities():
+    matrix, target = matrix_and_target()
+    model = build_model(
+        "mlp",
+        FAST_PARAMS["mlp"],
+        feature_columns=FEATURES,
+        categorical_columns=CATEGORICALS,
+        seed=42,
+    )
+    fit_model(
+        model,
+        matrix,
+        target,
+        family="mlp",
+        categorical_columns=CATEGORICALS,
+    )
+    probabilities = predict_positive_probability(model, matrix)
+
+    assert "mlp" in MODEL_FAMILIES
+    assert DEFAULT_MLP_PARAMS["early_stopping"] is True
+    assert np.isfinite(probabilities).all()
+    assert (probabilities >= 0.0).all()
+    assert (probabilities <= 1.0).all()
 
 
 def test_model_families_include_every_scored_candidate():
