@@ -1186,6 +1186,14 @@ def _fingerprint(frame: pd.DataFrame, columns) -> str:
     return hashlib.sha256(hashed.to_numpy().tobytes()).hexdigest()
 
 
+def _dependency_lock() -> str | None:
+    # Records the lock the run was launched from, not proof the env matched it.
+    lock = Path(__file__).resolve().parents[2] / "uv.lock"
+    if not lock.is_file():
+        return None
+    return hashlib.sha256(lock.read_bytes()).hexdigest()
+
+
 def _run_directory(output_dir: Path, config: TrainingConfig, fingerprint: str) -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     run_dir = output_dir / f"{config.name}_{stamp}_{config.seed}_{fingerprint[:8]}"
@@ -1753,6 +1761,7 @@ def run_training_pipeline(
         "package_versions": _package_versions(),
         "python": sys.version,
         "platform": platform.platform(),
+        "dependency_lock": _dependency_lock(),
         "dataset_fingerprint": fingerprint,
         "row_counts": {
             **row_counts,

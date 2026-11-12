@@ -52,7 +52,15 @@ tests/              # unit and data tests
 
 ## Setup
 
-The runs in this repository were produced on Python 3.14.6, which is the only interpreter this project is tested on and the floor declared in `requires-python`. Each run records the interpreter and package versions it actually used in `run_metadata.json`; differences between library versions matter more than differences between Python minor versions.
+The runs in this repository were produced on Python 3.14.6, which is the only interpreter this project is tested on and the floor declared in `requires-python`. Dependencies are pinned in `uv.lock`; each run records the interpreter, platform, installed package versions, and the sha256 of the lock it was launched from in `run_metadata.json`. Use `uv run` for pipeline commands so the environment stays in sync with the lock.
+
+`uv.lock` pins the full dependency set. Reproduce it with:
+
+```powershell
+uv sync --extra dev
+```
+
+Without uv:
 
 ```powershell
 python -m venv .venv

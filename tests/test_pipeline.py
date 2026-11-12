@@ -5,8 +5,10 @@ so it proves there is no second modeling implementation and that the PR run
 writes the same artifact set as the primary run.
 """
 
+import hashlib
 import json
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -234,6 +236,8 @@ def test_pr_run_reuses_the_pipeline_and_writes_every_artifact(tmp_path):
     assert metadata["split_source"] in {"reused_primary", "pr_only", "mixed"}
     assert metadata["seeds"]["split"] == 42
     assert metadata["package_versions"]["pandas"]
+    lock = Path(__file__).resolve().parents[1] / "uv.lock"
+    assert metadata["dependency_lock"] == hashlib.sha256(lock.read_bytes()).hexdigest()
     assert len(metadata["dataset_fingerprint"]) == 64
     assert metadata["row_counts"]["rows_used"] == (
         metrics["overall"]["n"] + metrics["split"]["development"]["rows"]

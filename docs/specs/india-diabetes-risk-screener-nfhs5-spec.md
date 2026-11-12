@@ -257,7 +257,7 @@ Bilingual UI and offline-first PWA targets are tracked in the post-launch backlo
    - Household recode (HR)
    - Biomarker recode (BR)
    - Codebook and questionnaire
-4. Read the files with `pandas.read_stata` or `pyreadstat`.
+4. Read the files with `pandas.read_stata`. `pyreadstat` is an optional alternative if feature rebuilds become slow, but it must reproduce the audited feature tables before it is adopted. Benchmark on the real files (2026-11-12): IR took 30.6 s and 9.9 GB peak with pandas vs 13.6 s and 0.7 GB with pyreadstat; PR took 10.0 s / 4.2 GB vs 12.6 s / 1.8 GB. Values matched exactly, but pyreadstat returns `object` dtype for integer columns with missing values, so a switch needs a dtype cast and a table diff.
 5. Keep raw data out of Git.
 6. Record file names, release dates, and checksums.
 7. Follow the DHS data-use terms; share code and aggregate results, not raw data.
@@ -1004,7 +1004,6 @@ Model artifacts
 - pandas / numpy
 - SHAP
 - joblib
-- pyreadstat
 - Pydantic
 - React or vanilla JS
 
