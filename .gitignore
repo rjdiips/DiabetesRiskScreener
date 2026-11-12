@@ -39,6 +39,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Generated knowledge-graph cache
+graphify-out/cache/
+
 # Local notes and agent working docs (kept out of version control)
 # docs/
 # .scratch/
