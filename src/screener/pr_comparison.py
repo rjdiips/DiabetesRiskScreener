@@ -193,7 +193,11 @@ _SMALL_GROUP_NOTE = (
 
 def _metric_block(metrics: Mapping[str, Any] | None) -> dict:
     metrics = {} if metrics is None else metrics
-    return {name: plain(metrics.get(name)) for name in COMPARISON_METRICS}
+    block = {name: plain(metrics.get(name)) for name in COMPARISON_METRICS}
+    if block.get("threshold") is None:
+        rule = metrics.get("threshold_rule") or {}
+        block["threshold"] = plain(rule.get("default_threshold"))
+    return block
 
 
 def _subgroup_rows(frame: pd.DataFrame, name: str) -> list[dict]:
@@ -377,6 +381,10 @@ def _run_snapshot(key: str, result: TrainingResult) -> dict:
             ),
             "threshold_selection": plain(threshold_selection),
             "selected_family": plain(selected_model.get("family")),
+            "threshold_rule": plain(overall.get("threshold_rule") or {}),
+            "age_band_performance": plain(
+                overall.get("age_band_performance") or []
+            ),
         },
         "sample_summary": _sample_summary(result),
         "subgroups": {
@@ -731,6 +739,35 @@ def _overall_table(comparison: Mapping[str, Any], *, weighted: bool = False) -> 
     return lines
 
 
+def _threshold_band_table(comparison: Mapping[str, Any]) -> list[str]:
+    lines = [
+        (
+            "| Run | Age band | n | Threshold | Sensitivity | Specificity | "
+            "PPV | Referral rate |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    wrote = False
+    for run_key in RUN_KEYS:
+        rows = comparison["runs"][run_key]["metrics"].get("age_band_performance") or []
+        for row in rows:
+            wrote = True
+            lines.append(
+                f"| {RUN_LABELS[run_key]} | {_format_plain(row.get('age_band'))} | "
+                f"{_format_plain(row.get('n'))} | "
+                f"{format_value(row.get('threshold'))} | "
+                f"{format_value(row.get('sensitivity'))} | "
+                f"{format_value(row.get('specificity'))} | "
+                f"{format_value(row.get('ppv'))} | "
+                f"{format_value(row.get('referral_rate'))} |"
+            )
+    if not wrote:
+        lines.append(
+            "| All runs | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"
+        )
+    return lines
+
+
 def _delta_table(comparison: Mapping[str, Any], *, weighted: bool = False) -> list[str]:
     deltas = comparison["weighted_deltas"] if weighted else comparison["deltas"]
     lines = [
@@ -954,6 +991,17 @@ def render_primary_vs_pr_report(comparison: Mapping[str, Any]) -> str:
         f"{comparison['messages']['overall']}",
         "",
         *_overall_table(comparison),
+        "",
+        "## Age-band operating points",
+        "",
+        (
+            "Each run chooses its referral threshold inside each age band, so the "
+            "band table reports the test-set sensitivity, specificity, PPV, and "
+            "referral rate at that band's own threshold. The single threshold in "
+            "the table above is the run's default fallback."
+        ),
+        "",
+        *_threshold_band_table(comparison),
         "",
         "## Survey-weighted overall metrics",
         "",
@@ -1459,13 +1507,15 @@ def render_pr_model_card_addendum(
         "",
         *_addendum_threshold_table(comparison),
         "",
+        "### Age-band operating points",
+        "",
+        *_threshold_band_table(comparison),
+        "",
         (
-            "Each run selects its own referral threshold on its own out-of-fold "
-            "predictions, targeting at least 80% sensitivity. The PR 15+ threshold "
-            f"is {format_value(run_value(comparison, 'pr_15_plus', 'threshold'))}; "
-            f"the PR 15–49 threshold is "
-            f"{format_value(run_value(comparison, 'pr_15_49', 'threshold'))}. "
-            "These are policy choices, not intrinsic model properties."
+            "Each run selects its own referral threshold inside each age band on "
+            "its own out-of-fold predictions, targeting at least 80% sensitivity "
+            "in that band. The single threshold above is the default fallback "
+            "used where no age band applies."
         ),
         "",
         (

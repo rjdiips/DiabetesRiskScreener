@@ -1353,6 +1353,72 @@ def _threshold_rule_lines(rule: dict) -> list[str]:
     return lines
 
 
+def _age_band_performance_lines(rows: list[dict]) -> list[str]:
+    if not rows:
+        return ["No per-age-band test performance was produced."]
+    lines = [
+        (
+            "| Age band | n | Positives | Threshold | Sensitivity | Specificity | "
+            "PPV | Referral rate |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        lines.append(
+            f"| {row.get('age_band')} | {_format(row.get('n'))} | "
+            f"{_format(row.get('positives'))} | {_format(row.get('threshold'))} | "
+            f"{_format(row.get('sensitivity'))} | "
+            f"{_format(row.get('specificity'))} | {_format(row.get('ppv'))} | "
+            f"{_format(row.get('referral_rate'))} |"
+        )
+    return lines
+
+
+def age_band_performance(
+    frame: pd.DataFrame,
+    target_column: str,
+    probabilities: np.ndarray,
+    rule: dict,
+    config: TrainingConfig,
+) -> list[dict]:
+    """Score the deployed operating point within each age band on one split."""
+    spec = _age_band_spec(config)
+    if spec is None or not rule:
+        return []
+    labels = spec.group_values(frame).to_numpy()
+    target = frame[target_column].to_numpy()
+    rows = []
+    for band in rule.get("labels", []):
+        mask = labels == band
+        if not mask.any():
+            continue
+        threshold = float(
+            rule.get("thresholds", {}).get(band, rule.get("default_threshold", 0.5))
+        )
+        metrics = binary_metrics(
+            target[mask],
+            probabilities[mask],
+            threshold=threshold,
+            n_bins=config.reliability_bins,
+        )
+        rows.append(
+            {
+                "age_band": band,
+                "n": metrics["n"],
+                "positives": metrics["positives"],
+                "prevalence": metrics["prevalence"],
+                "threshold": threshold,
+                "sensitivity": metrics["sensitivity"],
+                "specificity": metrics["specificity"],
+                "ppv": metrics["ppv"],
+                "referral_rate": round(
+                    float(np.mean(probabilities[mask] >= threshold)), 6
+                ),
+            }
+        )
+    return rows
+
+
 def _results_report(
     config: TrainingConfig,
     metrics: dict,
@@ -1427,6 +1493,10 @@ def _results_report(
         ),
         "",
         *_threshold_rule_lines(metrics.get("age_band_thresholds") or {}),
+        "",
+        "### Age-band performance (test, evaluated once)",
+        "",
+        *_age_band_performance_lines(overall.get("age_band_performance") or []),
         "",
         *_metrics_table(overall),
         "",
@@ -1701,6 +1771,10 @@ def _model_card(config: TrainingConfig, metrics: dict, metadata: dict) -> str:
         "",
         *_threshold_rule_lines(metrics.get("age_band_thresholds") or {}),
         "",
+        "### Age-band performance (test, evaluated once)",
+        "",
+        *_age_band_performance_lines(overall.get("age_band_performance") or []),
+        "",
         "## Limitations and non-goals",
         "",
         "- The model does not predict future diabetes.",
@@ -1799,6 +1873,13 @@ def run_training_pipeline(
     overall["threshold_mode"] = (
         "per_row" if test_thresholds is not None else "single"
     )
+    overall["age_band_performance"] = age_band_performance(
+        test,
+        config.target_column,
+        probabilities,
+        bundle.threshold_rule,
+        config,
+    )
     overall["confidence_intervals"] = bootstrap_confidence_intervals(
         target_test,
         probabilities,
@@ -1824,7 +1905,7 @@ def run_training_pipeline(
         "split": split_summary,
         "calibrator": getattr(calibrator, "method", "unknown"),
         "seed_averaging": seed_averaging,
-        "age_band_thresholds": selected_record.threshold_rule,
+        "age_band_thresholds": bundle.threshold_rule,
     }
 
     secondary = config.secondary_target_column
@@ -1931,7 +2012,7 @@ def run_training_pipeline(
         "feature_count": len(config.feature_columns),
         "feature_variant": config.metadata.get("feature_variant"),
         "threshold_mode": overall.get("threshold_mode"),
-        "age_band_thresholds": selected_record.threshold_rule,
+        "age_band_thresholds": bundle.threshold_rule,
         "subgroup_rules": {
             "small_group_min_rows": config.small_group_min_rows,
             "small_group_min_positives": config.small_group_min_positives,
