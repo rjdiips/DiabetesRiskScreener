@@ -755,15 +755,21 @@ def test_training_config_serialises_candidates_and_the_pinned_candidate():
 
     assert defaults["candidates"] == []
     assert defaults["pinned_candidate"] is None
+    assert defaults["seed_averaging"] is False
+    assert defaults["seed_averaging_seeds"] == []
 
     resolved = replace(
         TrainingConfig(),
         candidates=(candidate,),
         pinned_candidate=candidate,
+        seed_averaging=True,
+        seed_averaging_seeds=(42, 43),
     ).to_dict()
     expected = {"label": "logistic-final", "family": "logistic", "params": {"C": 0.5}}
     assert resolved["candidates"] == [expected]
     assert resolved["pinned_candidate"] == expected
+    assert resolved["seed_averaging"] is True
+    assert resolved["seed_averaging_seeds"] == [42, 43]
     with pytest.raises(FrozenInstanceError):
         candidate.family = "lightgbm"
 
@@ -928,6 +934,114 @@ def test_tuning_settings_expand_into_scored_candidates(tmp_path):
     assert [item["params"] for item in tuning_record["search_space"]] == [
         trial["params"] for trial in trials
     ]
+
+
+def test_seed_averaging_refits_a_stochastic_winner_across_every_seed(tmp_path):
+    features = pr_shaped_features()
+    params = {**LIGHTGBM_TEST_PARAMS, "n_estimators": 20}
+    config = replace(
+        pr_15_plus_config(
+            split_assignment=assign_pr_splits(features, seed=42, n_folds=3),
+            seed=42,
+            bootstrap_replicates=5,
+            shap_sample_size=10,
+        ),
+        n_folds=3,
+        pinned_candidate=Candidate(
+            label="lightgbm-winner",
+            family="lightgbm",
+            params=params,
+        ),
+        seed_averaging=True,
+        seed_averaging_seeds=(42, 43),
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    report = result.metrics["seed_averaging"]
+    assert report["deterministic"] is False
+    assert report["ensemble_size"] == 2
+    assert report["seeds"] == [42, 43]
+    assert result.run_metadata["seed_averaging"]["ensemble_size"] == 2
+    assert result.model.metadata["ensemble_size"] == 2
+    assert result.model.metadata["seeds"] == [42, 43]
+    assert result.metrics["overall"]["n"] == result.metrics["split"]["test"]["rows"]
+
+
+def test_seed_averaging_keeps_a_deterministic_winner_single(tmp_path):
+    features = pr_shaped_features()
+    config = replace(
+        pr_15_plus_config(
+            split_assignment=assign_pr_splits(features, seed=42, n_folds=3),
+            seed=42,
+            bootstrap_replicates=5,
+            shap_sample_size=10,
+        ),
+        n_folds=3,
+        pinned_candidate=Candidate(
+            label="logistic-winner",
+            family="logistic",
+            params={"C": 0.5},
+        ),
+        seed_averaging=True,
+        seed_averaging_seeds=(42, 43),
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    report = result.metrics["seed_averaging"]
+    assert report["deterministic"] is True
+    assert report["ensemble_size"] == 1
+    assert report["seeds"] == [42]
+    assert result.run_metadata["seed_averaging"]["ensemble_size"] == 1
+    assert result.model.metadata["ensemble_size"] == 1
+
+
+def test_no_seed_averaging_leaves_the_report_empty(tmp_path):
+    features = pr_shaped_features()
+    config = pr_15_plus_config(
+        split_assignment=assign_pr_splits(features, seed=42, n_folds=3),
+        seed=42,
+        bootstrap_replicates=5,
+        shap_sample_size=10,
+        model_params={"lightgbm": {**LIGHTGBM_TEST_PARAMS, "n_estimators": 20}},
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    assert result.metrics["seed_averaging"] is None
+    assert result.run_metadata["seed_averaging"] is None
+    assert result.model.metadata["ensemble_size"] == 1
+
+
+def test_selected_bundle_and_pin_are_recorded_in_metadata(tmp_path):
+    features = pr_shaped_features()
+    config = replace(
+        pr_15_plus_config(
+            split_assignment=assign_pr_splits(features, seed=42, n_folds=3),
+            seed=42,
+            bootstrap_replicates=5,
+            shap_sample_size=10,
+            metadata={
+                "selected_bundle": "measurement_no_bp",
+                "comparison_artifact": "artifacts/comparison/measurement_no_bp",
+            },
+        ),
+        n_folds=3,
+        pinned_candidate=Candidate(
+            label="logistic-winner",
+            family="logistic",
+            params={"C": 0.5},
+        ),
+    )
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    assert result.run_metadata["selected_bundle"] == "measurement_no_bp"
+    assert result.model.metadata["selected_bundle"] == "measurement_no_bp"
+    assert result.run_metadata["config"]["pinned_candidate"]["label"] == (
+        "logistic-winner"
+    )
 
 
 def test_candidate_labels_must_be_unique_and_non_empty(tmp_path):
