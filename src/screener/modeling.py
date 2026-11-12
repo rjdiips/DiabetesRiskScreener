@@ -12,6 +12,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -26,6 +27,7 @@ MODEL_FAMILIES = (
     "catboost",
     "logistic_spline",
     "lightgbm_monotone",
+    "mlp",
 )
 
 # The five continuous features that get spline terms and monotone constraints.
@@ -86,6 +88,19 @@ DEFAULT_CATBOOST_PARAMS: dict[str, Any] = {
     "thread_count": 1,
     "verbose": False,
     "allow_writing_files": False,
+}
+
+# Exploration only: the MLP is scored after the comparison and can be promoted
+# only by the pre-registered rule. It is not a comparison candidate.
+DEFAULT_MLP_PARAMS: dict[str, Any] = {
+    "hidden_layer_sizes": (64, 32),
+    "alpha": 1e-4,
+    "batch_size": 4096,
+    "learning_rate_init": 1e-3,
+    "max_iter": 80,
+    "early_stopping": True,
+    "validation_fraction": 0.1,
+    "n_iter_no_change": 5,
 }
 
 # One weighted LightGBM run is kept as a labelled sensitivity check only: it is
@@ -409,6 +424,26 @@ def build_model(
         settings = {**DEFAULT_CATBOOST_PARAMS, **params}
         settings.setdefault("random_seed", seed)
         return CatBoostClassifier(**settings)
+    if family == "mlp":
+        settings = {**DEFAULT_MLP_PARAMS, **params}
+        settings.setdefault("random_state", seed)
+        categorical = list(categorical_columns)
+        numeric = [
+            column for column in feature_columns if column not in categorical
+        ]
+        return Pipeline(
+            [
+                (
+                    "preprocess",
+                    _one_hot_preprocess(
+                        numeric,
+                        categorical,
+                        scale_numeric=True,
+                    ),
+                ),
+                ("classifier", MLPClassifier(**settings)),
+            ]
+        )
     raise ValueError(
         f"unknown model family '{family}'; expected one of "
         + ", ".join(MODEL_FAMILIES)
