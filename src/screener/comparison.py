@@ -367,16 +367,27 @@ def attach_winner_test_metrics(
     return artifact
 
 
+def _net_benefit(item: dict, threshold: float = 0.10):
+    for row in item.get("net_benefit", []):
+        if abs(float(row.get("threshold", -1)) - threshold) < 1e-9:
+            return row.get("net_benefit")
+    return None
+
+
 def _metric_row(item: dict) -> str:
     metrics = item["oof_metrics"]
     veto = "; ".join(item["vetoes"]) or "none"
+    gap = item.get("max_reliable_sensitivity_gap")
     return (
         f"| {item['rank']} | {item['label']} | {item['family']} | "
         f"{_number(metrics.get('pr_auc'))} | {_number(metrics.get('roc_auc'))} | "
         f"{_number(metrics.get('brier'))} | "
         f"{_number(metrics.get('calibration_slope'))} | "
         f"{_number(metrics.get('calibration_intercept'))} | "
-        f"{_number(metrics.get('sensitivity'))} | {veto} |"
+        f"{_number(metrics.get('sensitivity'))} | "
+        f"{_number(metrics.get('specificity'))} | "
+        f"{_number(gap)} | {_number(_net_benefit(item))} | "
+        f"{item.get('calibration', {}).get('selected', 'n/a')} | {veto} |"
     )
 
 
@@ -423,15 +434,42 @@ def render_comparison(artifact: dict) -> str:
         "",
         (
             "| Rank | Candidate | Family | PR-AUC | ROC-AUC | Brier | Slope | "
-            "Intercept | Sensitivity | Vetoes |"
+            "Intercept | Sensitivity | Specificity | Max subgroup gap | "
+            "Net benefit @0.10 | Calibrator | Vetoes |"
         ),
-        "|---:|---|---|---:|---:|---:|---:|---:|---:|---|",
+        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
     ]
     ranked = sorted(
         (item for item in artifact["candidates"] if item["rank"] is not None),
         key=lambda item: item["rank"],
     )
     lines.extend(_metric_row(item) for item in ranked)
+
+    lines.extend(
+        [
+            "",
+            "## Tuning record",
+            "",
+            "| Family | Selected setting | Parameters | Trials |",
+            "|---|---|---|---:|",
+        ]
+    )
+    seen = set()
+    ranked_by_family = sorted(
+        (item for item in artifact["candidates"] if item["rank"] is not None),
+        key=lambda item: item["rank"],
+    )
+    for item in ranked_by_family:
+        tuning = item.get("tuning")
+        if not tuning or item["family"] in seen:
+            continue
+        seen.add(item["family"])
+        selected = tuning["selected"]
+        lines.append(
+            f"| {item['family']} | {selected['label']} | "
+            f"`{json.dumps(selected['params'], sort_keys=True)}` | "
+            f"{tuning['trial_count']} |"
+        )
     if winner and winner.get("final_run"):
         lines.extend(
             [
