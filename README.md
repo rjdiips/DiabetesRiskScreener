@@ -198,7 +198,7 @@ This reads the local PR and IR/MR feature tables and checks the definition-of-do
 
 ## Published real-data results
 
-The full real-data runs were executed on the local NFHS-5 tables with the pinned modeling stack. The runs used Python 3.14.6 (see Setup); each run records the interpreter and package versions it actually used in its `run_metadata.json`. The primary run generated the cluster partition; the PR partition was rebuilt with `--primary-assignment` and records `split_source: mixed`. All three runs selected LightGBM and isotonic calibration.
+The full real-data runs were executed on the local NFHS-5 tables with the pinned modeling stack. The runs used Python 3.14.6 (see Setup); each run records the interpreter and package versions it actually used in its `run_metadata.json`. The primary run generated the cluster partition; the PR partition was rebuilt with `--primary-assignment` and records `split_source: mixed`. All three runs selected LightGBM and isotonic calibration. These October runs predate `uv.lock` (pandas 3.0.3, scikit-learn 1.9.0, xgboost 3.3.0); the lock resolves newer versions, so they are not reproducible from it. Tickets 11 and 12 rerun and replace them, and old and new numbers must not be quoted together.
 
 | Run | Rows | Test rows | Features | ROC-AUC | PR-AUC | Brier | ECE | Threshold | Sensitivity | Specificity | PPV | NPV |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
