@@ -267,9 +267,30 @@ class FitHandle:
             + ", ".join(self.names())
         )
 
-    def fit(self, label: str) -> ModelBundle:
+    def out_of_fold(
+        self,
+        label: str,
+        *,
+        seed: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return raw out-of-fold scores for one candidate, optionally reseeded."""
+        record = self.record(label)
+        trial = _cross_validate_candidate(
+            self.development,
+            self.config,
+            Candidate(
+                label=record.label,
+                family=record.family,
+                params=record.params,
+            ),
+            seed=seed,
+        )
+        return trial["oof"], trial["covered"]
+
+    def fit(self, label: str, *, seed: int | None = None) -> ModelBundle:
         """Fit the named candidate on every development row and calibrate it."""
         record = self.record(label)
+        model_seed = self.config.seed if seed is None else int(seed)
         matrix, levels = model_matrix(
             self.development,
             self.config.feature_columns,
@@ -280,7 +301,7 @@ class FitHandle:
             record.params,
             feature_columns=self.config.feature_columns,
             categorical_columns=self.config.categorical_columns,
-            seed=self.config.seed,
+            seed=model_seed,
         )
         fit_model(
             model,
@@ -315,7 +336,7 @@ class FitHandle:
                 "feature_set": record.feature_set,
                 "feature_count": record.feature_count,
                 "calibration_method": record.calibration_method,
-                "seed": self.config.seed,
+                "seed": model_seed,
                 "target_sensitivity": self.config.target_sensitivity,
             },
             model_family=record.family,
@@ -795,9 +816,12 @@ def _cross_validate_candidate(
     data: pd.DataFrame,
     config: TrainingConfig,
     candidate: Candidate,
+    *,
+    seed: int | None = None,
 ) -> dict:
     family = candidate.family
     params = candidate.params
+    model_seed = config.seed if seed is None else int(seed)
     development = data[data["split"].eq(DEVELOPMENT_SPLIT)].reset_index(drop=True)
     matrix, levels = model_matrix(
         development,
@@ -823,7 +847,7 @@ def _cross_validate_candidate(
             params,
             feature_columns=config.feature_columns,
             categorical_columns=config.categorical_columns,
-            seed=config.seed,
+            seed=model_seed,
         )
         fit_model(
             model,
