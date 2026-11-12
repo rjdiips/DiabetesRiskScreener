@@ -19,9 +19,10 @@ from screener.pipeline import (
     Candidate,
     evaluate_candidates,
     prepare_training_data,
+    run_training_pipeline,
 )
 from screener.pr_model import pr_15_plus_config
-from screener.splits import assign_pr_splits
+from screener.splits import DEVELOPMENT_SPLIT, assign_pr_splits
 
 N_FOLDS = 3
 
@@ -337,3 +338,67 @@ def test_selection_rejects_a_development_fold_outside_the_folds(monkeypatch):
 
     with pytest.raises(ValueError, match="valid fold"):
         evaluate_candidates(bad, config)
+
+
+def test_fit_handle_refits_a_named_candidate_consistently():
+    features = pr_shaped_features()
+    config = replace(
+        selection_config(features),
+        candidates=(
+            Candidate(label="logistic-restricted", family="logistic", params={"C": 0.5}),
+            Candidate(label="lightgbm-tuned", family="lightgbm", params=LIGHTGBM_TEST_PARAMS),
+        ),
+    )
+    prepared = prepare_training_data(features, config)
+    evidence = evaluate_candidates(prepared.development, config)
+
+    bundle = evidence.fit("logistic-restricted")
+    record = evidence.record("logistic-restricted")
+
+    assert bundle.model_family == "logistic"
+    assert bundle.feature_columns == config.feature_columns
+    assert bundle.threshold == record.threshold_report["threshold"]
+    assert bundle.calibrator.method == record.calibration_method
+    assert bundle.metadata["candidate_label"] == "logistic-restricted"
+    assert bundle.metadata["params"] == {"C": 0.5}
+
+    # The refit calibrator reproduces the evidence on its own out-of-fold scores.
+    covered = record.covered
+    rerun = bundle.calibrator.predict(record.oof_scores[covered])
+    assert np.allclose(rerun, record.oof_probabilities[covered], atol=1e-12)
+
+    probabilities = bundle.predict_proba(prepared.development)
+    assert probabilities.shape == (len(prepared.development),)
+    assert np.isfinite(probabilities).all()
+    assert ((probabilities >= 0) & (probabilities <= 1)).all()
+
+    with pytest.raises(ValueError, match="unknown candidate"):
+        evidence.fit("not-a-candidate")
+
+
+def test_pipeline_runs_selection_on_development_rows_only(tmp_path, monkeypatch):
+    features = pr_shaped_features()
+    config = pr_15_plus_config(
+        split_assignment=assign_pr_splits(features, seed=42),
+        seed=42,
+        bootstrap_replicates=5,
+        shap_sample_size=10,
+        model_params={"lightgbm": LIGHTGBM_TEST_PARAMS},
+    )
+    seen = {}
+    original = evaluate_candidates
+
+    def spy(development, selection_config_arg):
+        seen["rows"] = len(development)
+        seen["splits"] = set(development["split"].unique())
+        return original(development, selection_config_arg)
+
+    monkeypatch.setattr("screener.pipeline.evaluate_candidates", spy)
+
+    result = run_training_pipeline(features, config, tmp_path)
+
+    assert seen["splits"] == {DEVELOPMENT_SPLIT}
+    assert seen["rows"] == result.row_counts["development_rows"]
+    assert result.row_counts["development_rows"] + result.row_counts["test_rows"] == len(
+        prepare_training_data(features, config).filtered
+    )

@@ -21,7 +21,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .calibration import select_calibrator, select_threshold, threshold_analysis
+from .calibration import (
+    IdentityCalibrator,
+    fit_calibrator,
+    select_calibrator,
+    select_threshold,
+    threshold_analysis,
+)
 from .feature_policy import validate_feature_frame
 from .metrics import (
     binary_metrics,
@@ -226,6 +232,94 @@ class SelectionEvidence:
     development_rows: int
     fold_count: int
     records: list[SelectionRecord]
+    fit_handle: FitHandle
+
+    def record(self, label: str) -> SelectionRecord:
+        """Return the evidence record for one scored candidate."""
+        return self.fit_handle.record(label)
+
+    def fit(self, label: str) -> ModelBundle:
+        """Refit one scored candidate on all development rows."""
+        return self.fit_handle.fit(label)
+
+
+@dataclass(frozen=True)
+class FitHandle:
+    """Refits any scored candidate on all development rows.
+
+    This is the only bridge from selection evidence to final evaluation, so a
+    candidate fitted here is exactly the one the evidence describes.
+    """
+
+    development: pd.DataFrame = field(repr=False)
+    config: TrainingConfig = field(repr=False)
+    records: tuple[SelectionRecord, ...]
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(record.label for record in self.records)
+
+    def record(self, label: str) -> SelectionRecord:
+        for record in self.records:
+            if record.label == label:
+                return record
+        raise ValueError(
+            f"unknown candidate '{label}'; scored candidates are: "
+            + ", ".join(self.names())
+        )
+
+    def fit(self, label: str) -> ModelBundle:
+        """Fit the named candidate on every development row and calibrate it."""
+        record = self.record(label)
+        matrix, levels = model_matrix(
+            self.development,
+            self.config.feature_columns,
+            self.config.categorical_columns,
+        )
+        model = build_model(
+            record.family,
+            record.params,
+            feature_columns=self.config.feature_columns,
+            categorical_columns=self.config.categorical_columns,
+            seed=self.config.seed,
+        )
+        fit_model(
+            model,
+            matrix,
+            self.development[self.config.target_column].to_numpy(),
+            family=record.family,
+            categorical_columns=self.config.categorical_columns,
+        )
+
+        covered = record.covered
+        method = record.calibration_method
+        if method == "identity":
+            calibrator = IdentityCalibrator()
+        else:
+            calibrator = fit_calibrator(
+                record.target[covered],
+                record.oof_scores[covered],
+                method,
+            )
+        return ModelBundle(
+            model=model,
+            calibrator=calibrator,
+            feature_columns=self.config.feature_columns,
+            categorical_columns=self.config.categorical_columns,
+            category_levels=levels,
+            threshold=record.threshold_report["threshold"],
+            target_definition=self.config.target_definition,
+            metadata={
+                "candidate_label": record.label,
+                "model_family": record.family,
+                "params": record.params,
+                "feature_set": record.feature_set,
+                "feature_count": record.feature_count,
+                "calibration_method": record.calibration_method,
+                "seed": self.config.seed,
+                "target_sensitivity": self.config.target_sensitivity,
+            },
+            model_family=record.family,
+        )
 
 
 @dataclass
@@ -637,12 +731,18 @@ def evaluate_candidates(
             )
         )
 
+    records = tuple(records)
     return SelectionEvidence(
         feature_set=feature_set,
         feature_count=feature_count,
         development_rows=len(development),
         fold_count=int(development["fold"].nunique()),
-        records=records,
+        records=list(records),
+        fit_handle=FitHandle(
+            development=development,
+            config=config,
+            records=records,
+        ),
     )
 
 
@@ -774,75 +874,41 @@ def _cross_validate_candidate(
     }
 
 
-def _select_and_refit(
-    data: pd.DataFrame,
-    config: TrainingConfig,
-) -> tuple[dict, Any, dict]:
-    trials = [
-        _cross_validate_candidate(data, config, candidate)
-        for candidate in _resolve_candidates(config)
-    ]
-
-    if not trials:
-        raise ValueError("no model trials were produced")
-
-    selected = max(trials, key=_selection_key)
-    development = data[data["split"].eq(DEVELOPMENT_SPLIT)].reset_index(drop=True)
-    matrix, levels = model_matrix(
-        development,
-        config.feature_columns,
-        config.categorical_columns,
-    )
-    final_model = build_model(
-        selected["family"],
-        selected["params"],
-        feature_columns=config.feature_columns,
-        categorical_columns=config.categorical_columns,
-        seed=config.seed,
-    )
-    fit_model(
-        final_model,
-        matrix,
-        development[config.target_column].to_numpy(),
-        family=selected["family"],
-        categorical_columns=config.categorical_columns,
-    )
-
-    summary = [
-        {
-            "label": trial["label"],
-            "family": trial["family"],
-            "params": trial["params"],
-            "mean_pr_auc": trial["mean_pr_auc"],
-            "mean_brier": trial["mean_brier"],
-            "mean_log_loss": trial["mean_log_loss"],
-            "selected": trial is selected,
-        }
-        for trial in trials
-    ]
-    return selected, final_model, {
-        "selected_label": selected["label"],
-        "selected_family": selected["family"],
-        "selected_params": selected["params"],
-        "tuning_record": {
-            "trial_count": len(trials),
-            "selected": {
-                "label": selected["label"],
-                "family": selected["family"],
-                "params": selected["params"],
-            },
-            "search_space": [
-                {
-                    "label": trial["label"],
-                    "family": trial["family"],
-                    "params": trial["params"],
-                }
-                for trial in trials
-            ],
-        },
-        "trials": summary,
-        "category_levels": levels,
+def _record_summary(record: SelectionRecord, *, selected: bool = False) -> dict:
+    """The per-candidate summary the existing artifact set records."""
+    folds = [item for item in record.fold_metrics if "skipped" not in item]
+    values = {
+        "mean_pr_auc": _mean([item.get("pr_auc") for item in folds]),
+        "mean_brier": _mean([item.get("brier") for item in folds]),
+        "mean_log_loss": _mean([item.get("log_loss") for item in folds]),
     }
+    return {
+        "label": record.label,
+        "family": record.family,
+        "params": record.params,
+        **values,
+        "selected": selected,
+    }
+
+
+def _select_record(
+    evidence: SelectionEvidence,
+) -> tuple[SelectionRecord, dict]:
+    """Pick the best scoring record and build the recorded selection summary."""
+    if not evidence.records:
+        raise ValueError("no model trials were produced")
+    best = max(evidence.records, key=lambda item: _selection_key(_record_summary(item)))
+    summary = {
+        "selected_label": best.label,
+        "selected_family": best.family,
+        "selected_params": best.params,
+        "tuning_record": best.tuning_record,
+        "trials": [
+            _record_summary(record, selected=record is best)
+            for record in evidence.records
+        ],
+    }
+    return best, summary
 
 
 def _gap(value: float | None, reference: float | None) -> float | None:
@@ -1534,34 +1600,27 @@ def run_training_pipeline(
     if test[config.target_column].nunique() < 2:
         raise ValueError("the test split must contain both target classes")
 
-    selected, final_model, selection = _select_and_refit(development, config)
+    evidence = evaluate_candidates(development, config)
+    selected_record, selection = _select_record(evidence)
+    bundle = evidence.fit_handle.fit(selected_record.label)
+    final_model = bundle.model
+    calibrator = bundle.calibrator
+    threshold = bundle.threshold
+    calibration_report = selected_record.calibration_report
+    threshold_report = selected_record.threshold_report
+    selection["category_levels"] = bundle.category_levels
 
-    covered = selected["covered"]
-    oof_target = development.reset_index(drop=True).loc[
-        covered, config.target_column
-    ].to_numpy()
-    oof_scores = selected["oof"][covered]
-    calibrator, calibration_report = select_calibrator(
-        oof_target,
-        oof_scores,
-        methods=config.calibration_methods,
-    )
-    calibrated_oof = calibrator.predict(oof_scores)
-    threshold_report = select_threshold(
-        oof_target,
-        calibrated_oof,
-        target_sensitivity=config.target_sensitivity,
-    )
-    threshold = threshold_report["threshold"]
+    covered = selected_record.covered
+    oof_target = selected_record.target[covered]
+    calibrated_oof = selected_record.oof_probabilities[covered]
 
     matrix_test = inference_matrix(
         test,
         config.feature_columns,
         config.categorical_columns,
-        selection["category_levels"],
+        bundle.category_levels,
     )
-    raw_test = predict_positive_probability(final_model, matrix_test)
-    probabilities = np.clip(calibrator.predict(raw_test), 0.0, 1.0)
+    probabilities = bundle.predict_proba(test)
 
     target_test = test[config.target_column].to_numpy()
     overall = binary_metrics(
@@ -1625,7 +1684,7 @@ def run_training_pipeline(
         target_sensitivity=config.target_sensitivity,
     )
     importance, importance_kind = _feature_importance(
-        final_model, selected["family"], config.feature_columns
+        final_model, selected_record.family, config.feature_columns
     )
 
     shap_sample = min(config.shap_sample_size, len(test))
@@ -1645,7 +1704,7 @@ def run_training_pipeline(
     run_dir = _run_directory(Path(output_dir), config, fingerprint)
     shap_summary, shap_values, shap_report = _shap_summary(
         final_model,
-        selected["family"],
+        selected_record.family,
         shap_matrix,
         shap_target,
         config.feature_columns,
@@ -1691,30 +1750,19 @@ def run_training_pipeline(
             "state_min_test_rows": config.state_min_test_rows,
         },
         "selected_model": {
-            "family": selected["family"],
-            "params": selected["params"],
+            "family": selected_record.family,
+            "params": selected_record.params,
             "importance_type": importance_kind,
         },
         "shap": shap_report,
         "extra": config.metadata,
     }
 
-    bundle = ModelBundle(
-        model=final_model,
-        calibrator=calibrator,
-        feature_columns=config.feature_columns,
-        categorical_columns=config.categorical_columns,
-        category_levels=selection["category_levels"],
-        threshold=threshold,
-        target_definition=config.target_definition,
-        metadata={
+    bundle.metadata.update(
+        {
             "run_id": run_id,
-            "model_family": selected["family"],
-            "seed": config.seed,
             "dataset_fingerprint": fingerprint,
-            "target_sensitivity": config.target_sensitivity,
-        },
-        model_family=selected["family"],
+        }
     )
 
     artifacts: dict[str, Path] = {}
