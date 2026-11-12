@@ -362,6 +362,10 @@ def _run_snapshot(key: str, result: TrainingResult) -> dict:
             result.run_metadata.get("feature_variant")
             or result.config.metadata.get("feature_variant")
         ),
+        "selected_bundle": plain(
+            result.run_metadata.get("selected_bundle")
+            or result.config.metadata.get("selected_bundle")
+        ),
         "feature_count": len(result.config.feature_columns),
         "feature_columns": list(result.config.feature_columns),
         "metrics": {
@@ -578,6 +582,7 @@ def compare_primary_vs_pr(
     comparison = {
         "comparison_order": list(RUN_KEYS),
         "labels": dict(RUN_LABELS),
+        "selected_bundle": runs["primary"]["selected_bundle"],
         "runs": runs,
         "sample_table": [
             {
@@ -871,6 +876,19 @@ def _run_heading(comparison: Mapping[str, Any], key: str) -> str:
 def render_primary_vs_pr_report(comparison: Mapping[str, Any]) -> str:
     """Render a structured primary-versus-PR comparison as readable Markdown."""
     feature_notes = comparison["feature_differences"]["notes"]
+    selected_bundle = comparison["runs"]["primary"]["selected_bundle"]
+    bundle_note = (
+        [
+            (
+                f"- The primary run selected the `{selected_bundle}` bundle "
+                f"({comparison['runs']['primary']['feature_count']} features). "
+                "The PR runs keep the PR 12-feature set and do not inherit the "
+                "primary bundle choice."
+            )
+        ]
+        if selected_bundle
+        else []
+    )
     lines = [
         "# Primary vs PR sensitivity model comparison",
         "",
@@ -896,6 +914,7 @@ def render_primary_vs_pr_report(comparison: Mapping[str, Any]) -> str:
         "## What the three runs are",
         "",
         *[f"- {note}" for note in comparison["narrative"]],
+        *bundle_note,
         "",
         "## Sample differences",
         "",

@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,8 +26,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import pandas as pd
 
+from screener.comparison import comparison_candidates
 from screener.config import ARTIFACTS_DIR, PROCESSED_DIR, relative_to_project
-from screener.pipeline import run_training_pipeline
+from screener.pipeline import TrainingConfig, run_training_pipeline
 from screener.pr_model import (
     pr_15_49_config,
     pr_15_plus_config,
@@ -48,6 +50,23 @@ _RECONCILERS = {
     SAMPLE_15_PLUS: reconcile_pr_bp_sample,
     SAMPLE_15_49: reconcile_pr_15_49_sample,
 }
+
+
+def configure_candidates(
+    config: TrainingConfig,
+    comparison_candidates_flag: bool,
+) -> TrainingConfig:
+    """Use the pre-registered shortlist candidates, or the default selection."""
+    return replace(
+        config,
+        candidates=comparison_candidates() if comparison_candidates_flag else (),
+        metadata={
+            **config.metadata,
+            "candidate_set": (
+                "shortlist" if comparison_candidates_flag else "default"
+            ),
+        },
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,6 +112,11 @@ def main(argv: list[str] | None = None) -> int:
         "--no-split-assignment",
         action="store_true",
         help="Ignore the saved PR split and assign a fresh partition.",
+    )
+    parser.add_argument(
+        "--comparison-candidates",
+        action="store_true",
+        help="Score the pre-registered shortlist candidates instead of the defaults.",
     )
     args = parser.parse_args(argv)
 
@@ -141,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
         feature_variant=args.feature_variant,
         metadata={"sample_reconciliation": reconciliation},
     )
+    config = configure_candidates(config, args.comparison_candidates)
 
     result = run_training_pipeline(features, config, args.output)
 
