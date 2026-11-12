@@ -52,6 +52,8 @@ def build_run_summary(
         "roc_auc": overall["roc_auc"],
         "pr_auc": overall["pr_auc"],
         "threshold": overall["threshold"],
+        "threshold_mode": overall.get("threshold_mode"),
+        "age_band_thresholds": overall.get("threshold_rule") or {},
         "sensitivity": overall["sensitivity"],
         "specificity": overall["specificity"],
         "fact_sheet_pr_auc": result.metrics.get("secondary_target", {}).get("pr_auc"),

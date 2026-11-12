@@ -195,6 +195,7 @@ def test_pr_run_reuses_the_pipeline_and_writes_every_artifact(tmp_path):
     assert metrics["overall"]["n"] == result.metrics["split"]["test"]["rows"]
     assert metrics["overall"]["roc_auc"] is not None
     assert metrics["overall"]["threshold"] == result.metrics["overall"]["threshold"]
+    assert metrics["overall"]["threshold_mode"] == "per_row"
     assert metrics["calibration"]["selected"] in {"isotonic", "platt"}
     assert metrics["threshold_selection"]["target_sensitivity"] == 0.8
 
@@ -262,7 +263,11 @@ def test_pr_run_reuses_the_pipeline_and_writes_every_artifact(tmp_path):
         bundle.predict_proba(frame),
         result.model.predict_proba(frame),
     )
-    assert bundle.threshold == metrics["overall"]["threshold"]
+    assert bundle.threshold == metrics["age_band_thresholds"]["default_threshold"]
+    assert metrics["overall"]["threshold"] is None
+    assert set(bundle.threshold_rule["thresholds"]) == set(
+        metrics["age_band_thresholds"]["thresholds"]
+    )
 
 
 def test_pr_15_49_run_filters_the_flag_and_reuses_the_15_plus_partition(tmp_path):

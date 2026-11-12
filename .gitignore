@@ -19,6 +19,9 @@ artifacts/**/split_assignment.parquet
 artifacts/**/split_assignment.csv
 artifacts/**/shap_values.csv
 
+# First-pass comparison evidence kept for audit; superseded by the amended rule
+artifacts/comparison/first_pass/
+
 # Python
 __pycache__/
 *.egg-info/

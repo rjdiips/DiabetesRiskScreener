@@ -131,8 +131,17 @@ def test_selection_record_carries_oof_evidence_for_exactly_the_development_rows(
         threshold_report = record.threshold_report
         assert threshold_report["target_sensitivity"] == config.target_sensitivity
         assert 0 <= threshold_report["threshold"] <= 1
-        assert threshold_report["threshold"] == record.metrics["threshold"]
+        assert record.threshold_rule["default_threshold"] == threshold_report["threshold"]
+        assert record.metrics["threshold_mode"] == "per_row"
+        assert set(record.threshold_rule["thresholds"]) == set(
+            record.threshold_rule["labels"]
+        )
         assert threshold_report["confusion"]
+        age_rows = [row for row in record.subgroups if row["subgroup"] == "age_band"]
+        assert age_rows
+        for row in age_rows:
+            if row["positives"]:
+                assert row["sensitivity"] >= config.target_sensitivity - 1e-6
 
         metrics = record.metrics
         assert metrics["n"] == int(covered.sum())

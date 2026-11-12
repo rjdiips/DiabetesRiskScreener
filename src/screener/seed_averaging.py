@@ -12,11 +12,21 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .calibration import select_calibrator, select_threshold
+from .calibration import (
+    select_calibrator,
+    select_threshold,
+    select_thresholds_by_group,
+    thresholds_for_groups,
+)
 from .metrics import binary_metrics
 from .model_bundle import ModelBundle
 from .modeling import predict_positive_probability
-from .pipeline import SelectionEvidence
+from .pipeline import (
+    SelectionEvidence,
+    _age_band_spec,
+    _bundle_threshold_rule,
+    threshold_group_labels,
+)
 
 DEFAULT_SEEDS = tuple(range(42, 52))
 
@@ -92,6 +102,7 @@ def fit_seed_averaged(
             "ensemble_size": 1,
             "calibration_method": bundle.calibrator.method,
             "threshold": bundle.threshold,
+            "age_band_thresholds": bundle.threshold_rule,
             "feature_columns": list(bundle.feature_columns),
             "feature_count": len(bundle.feature_columns),
             "model_version": f"{record.family}-single-v1",
@@ -139,13 +150,36 @@ def fit_seed_averaged(
     )
     threshold = threshold_report["threshold"]
 
+    group_labels = threshold_group_labels(handle.development, config)
+    group_rule = None
+    bundle_threshold_rule = {}
+    covered_thresholds = None
+    if group_labels is not None:
+        pooled_groups = np.concatenate(
+            [group_labels[covered] for _, _, covered in seed_oof]
+        )
+        group_rule = select_thresholds_by_group(
+            pooled_target,
+            calibrated_pooled,
+            pooled_groups,
+            target_sensitivity=config.target_sensitivity,
+        )
+        bundle_threshold_rule = _bundle_threshold_rule(
+            _age_band_spec(config), group_rule
+        )
+        covered_thresholds = thresholds_for_groups(
+            group_rule, group_labels[record.covered]
+        )
+
     per_seed = []
     for seed, oof, covered in seed_oof:
         probabilities = np.clip(calibrator.predict(oof[covered]), 0.0, 1.0)
         metrics = binary_metrics(
             record.target[covered],
             probabilities,
-            threshold=threshold,
+            threshold=(
+                covered_thresholds if covered_thresholds is not None else threshold
+            ),
             n_bins=config.reliability_bins,
         )
         per_seed.append(
@@ -164,7 +198,9 @@ def fit_seed_averaged(
     averaged_metrics = binary_metrics(
         record.target[record.covered],
         averaged_probabilities,
-        threshold=threshold,
+        threshold=(
+            covered_thresholds if covered_thresholds is not None else threshold
+        ),
         n_bins=config.reliability_bins,
     )
     mean, std = _mean_std(per_seed)
@@ -179,6 +215,7 @@ def fit_seed_averaged(
         categorical_columns=base_bundle.categorical_columns,
         category_levels=base_bundle.category_levels,
         threshold=threshold,
+        threshold_rule=bundle_threshold_rule,
         target_definition=config.target_definition,
         metadata={
             "candidate_label": label,
@@ -203,6 +240,7 @@ def fit_seed_averaged(
         "calibration": calibration_report,
         "threshold": threshold,
         "threshold_report": threshold_report,
+        "age_band_thresholds": bundle_threshold_rule,
         "feature_columns": list(bundle.feature_columns),
         "feature_count": len(bundle.feature_columns),
         "model_version": bundle.metadata["model_version"],

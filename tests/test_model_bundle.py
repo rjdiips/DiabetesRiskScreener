@@ -41,6 +41,21 @@ def test_bundle_predicts_calibrated_probabilities_and_the_threshold_flag():
     assert list(bundle.predict(frame)) == [1, 1]
 
 
+def test_bundle_applies_one_threshold_per_age_band():
+    bundle = _bundle(threshold=0.9)
+    bundle.threshold_rule = {
+        "column": "age",
+        "bins": [15.0, 25.0, 999.0],
+        "labels": ["15-24", "25+"],
+        "thresholds": {"15-24": 0.5, "25+": 0.3},
+        "default_threshold": 0.9,
+    }
+    frame = pd.DataFrame({"age": [20, 30, None], "female": [0, 0, 0]})
+
+    assert list(bundle.thresholds(frame)) == [0.5, 0.3, 0.9]
+    assert list(bundle.predict(frame)) == [0, 1, 0]
+
+
 def test_bundle_rejects_a_frame_missing_a_training_feature():
     bundle = _bundle()
 

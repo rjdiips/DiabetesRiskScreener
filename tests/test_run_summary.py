@@ -93,6 +93,8 @@ def test_summary_keeps_every_documented_field():
         "roc_auc": 0.8,
         "pr_auc": 0.42,
         "threshold": 0.31,
+        "threshold_mode": None,
+        "age_band_thresholds": {},
         "sensitivity": 0.8,
         "specificity": 0.62,
         "fact_sheet_pr_auc": 0.55,

@@ -26,7 +26,9 @@ from .calibration import (
     fit_calibrator,
     select_calibrator,
     select_threshold,
+    select_thresholds_by_group,
     threshold_analysis,
+    thresholds_for_groups,
 )
 from .feature_policy import validate_feature_frame
 from .metrics import (
@@ -216,6 +218,7 @@ class SelectionRecord:
     calibration_method: str
     calibration_report: dict
     threshold_report: dict
+    threshold_rule: dict
     metrics: dict
     subgroups: list[dict]
     reliability_curve: list[dict]
@@ -328,6 +331,7 @@ class FitHandle:
             categorical_columns=self.config.categorical_columns,
             category_levels=levels,
             threshold=record.threshold_report["threshold"],
+            threshold_rule=record.threshold_rule,
             target_definition=self.config.target_definition,
             metadata={
                 "candidate_label": record.label,
@@ -649,6 +653,35 @@ def _validate_development_frame(
         )
 
 
+def _age_band_spec(config: TrainingConfig):
+    return next(
+        (spec for spec in config.subgroups if spec.name == "age_band" and spec.bins),
+        None,
+    )
+
+
+def _bundle_threshold_rule(spec: SubgroupSpec | None, rule: dict) -> dict:
+    if spec is None:
+        return {}
+    return {
+        "column": spec.column,
+        "bins": [
+            float(bound) if np.isfinite(bound) else 999.0 for bound in spec.bins
+        ],
+        "labels": list(spec.labels),
+        "thresholds": {
+            group: report["threshold"] for group, report in rule.get("groups", {}).items()
+        },
+        "default_threshold": rule["default"]["threshold"],
+    }
+
+
+def threshold_group_labels(development: pd.DataFrame, config: TrainingConfig):
+    """Return the age-band label for every development row, or ``None``."""
+    spec = _age_band_spec(config)
+    return None if spec is None else spec.group_values(development).to_numpy()
+
+
 def evaluate_candidates(
     development: pd.DataFrame,
     config: TrainingConfig,
@@ -676,6 +709,10 @@ def evaluate_candidates(
     )
     feature_count = len(config.feature_columns)
     search_space = [candidate.to_dict() for candidate in candidates]
+    age_spec = _age_band_spec(config)
+    age_labels = (
+        age_spec.group_values(development).to_numpy() if age_spec is not None else None
+    )
 
     records = []
     for candidate in candidates:
@@ -702,12 +739,30 @@ def evaluate_candidates(
             calibrated,
             target_sensitivity=config.target_sensitivity,
         )
+        if age_spec is not None:
+            group_thresholds = select_thresholds_by_group(
+                covered_target,
+                calibrated,
+                age_labels[covered],
+                target_sensitivity=config.target_sensitivity,
+            )
+            thresholds = thresholds_for_groups(group_thresholds, age_labels)
+        else:
+            group_thresholds = {
+                "target_sensitivity": config.target_sensitivity,
+                "default": threshold_report,
+                "groups": {},
+            }
+            thresholds = np.full(
+                len(development), threshold_report["threshold"], dtype=float
+            )
         overall = binary_metrics(
             covered_target,
             calibrated,
-            threshold=threshold_report["threshold"],
+            threshold=thresholds[covered],
             n_bins=config.reliability_bins,
         )
+        overall["threshold_rule"] = _bundle_threshold_rule(age_spec, group_thresholds)
         subgroups = subgroup_metrics(
             development,
             config.target_column,
@@ -715,6 +770,7 @@ def evaluate_candidates(
             config,
             overall,
             SELECTION_SPLIT_LABEL,
+            thresholds=thresholds,
         )
         records.append(
             SelectionRecord(
@@ -740,6 +796,9 @@ def evaluate_candidates(
                 calibration_method=calibration_report["selected"],
                 calibration_report=_jsonable(calibration_report),
                 threshold_report=_jsonable(threshold_report),
+                threshold_rule=_jsonable(
+                    _bundle_threshold_rule(age_spec, group_thresholds)
+                ),
                 metrics=_jsonable(overall),
                 subgroups=_jsonable(subgroups.to_dict("records")),
                 reliability_curve=_jsonable(
@@ -976,11 +1035,26 @@ def subgroup_metrics(
     config: TrainingConfig,
     overall: dict,
     split_label: str,
+    *,
+    thresholds: np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """Return one audit row per subgroup, labelled with the split it scored."""
+    """Return one audit row per subgroup, labelled with the split it scored.
+
+    ``thresholds`` may hold one cutoff per row, so a subgroup is scored at the
+    same age-band threshold the deployed decision uses.
+    """
     rows = []
     target = frame[target_column].to_numpy()
     scored = np.isfinite(probabilities)
+    row_thresholds = (
+        np.full(
+            len(frame),
+            0.5 if overall.get("threshold") is None else overall["threshold"],
+            dtype=float,
+        )
+        if thresholds is None
+        else np.asarray(thresholds, dtype=float)
+    )
     for spec in config.subgroups:
         labels = spec.group_values(frame)
         for group in sorted(labels.unique()):
@@ -991,7 +1065,7 @@ def subgroup_metrics(
             metrics = binary_metrics(
                 target[mask],
                 probabilities[mask],
-                threshold=overall["threshold"],
+                threshold=row_thresholds[mask],
                 n_bins=config.reliability_bins,
             )
             rows_ok = n >= config.small_group_min_rows
@@ -1260,6 +1334,25 @@ def _subgroup_table(subgroups: pd.DataFrame) -> list[str]:
     return lines
 
 
+def _threshold_rule_lines(rule: dict) -> list[str]:
+    groups = (rule or {}).get("groups") or {}
+    if not groups:
+        return ["No per-group threshold table; one threshold applies to every row."]
+    lines = [
+        "| Age band | Threshold | Sensitivity | Specificity | PPV | Referral rate |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for group, report in groups.items():
+        lines.append(
+            f"| {group} | {_format(report.get('threshold'))} | "
+            f"{_format(report.get('sensitivity'))} | "
+            f"{_format(report.get('specificity'))} | "
+            f"{_format(report.get('ppv'))} | "
+            f"{_format(report.get('referral_rate'))} |"
+        )
+    return lines
+
+
 def _results_report(
     config: TrainingConfig,
     metrics: dict,
@@ -1324,9 +1417,16 @@ def _results_report(
         "## Test performance at the chosen threshold",
         "",
         (
-            f"Threshold: **{_format(overall['threshold'])}** "
+            "Threshold: **per age band** "
             f"(target sensitivity {_format(config.target_sensitivity, 2)})"
+            if overall.get("threshold_mode") == "per_row"
+            else (
+                f"Threshold: **{_format(overall['threshold'])}** "
+                f"(target sensitivity {_format(config.target_sensitivity, 2)})"
+            )
         ),
+        "",
+        *_threshold_rule_lines(metrics.get("age_band_thresholds") or {}),
         "",
         *_metrics_table(overall),
         "",
@@ -1585,10 +1685,21 @@ def _model_card(config: TrainingConfig, metrics: dict, metadata: dict) -> str:
         "",
         (
             f"The calibrator was selected on out-of-fold predictions "
-            f"(`{metrics['calibration']['selected']}`). The referral threshold is "
-            f"{_format(overall['threshold'])} and targets at least "
-            f"{_format(config.target_sensitivity, 2)} sensitivity."
+            f"(`{metrics['calibration']['selected']}`). "
+            + (
+                "The referral threshold is chosen inside each age band, targeting at "
+                f"least {_format(config.target_sensitivity, 2)} sensitivity in that "
+                "band."
+                if overall.get("threshold_mode") == "per_row"
+                else (
+                    f"The referral threshold is {_format(overall['threshold'])} and "
+                    f"targets at least {_format(config.target_sensitivity, 2)} "
+                    "sensitivity."
+                )
+            )
         ),
+        "",
+        *_threshold_rule_lines(metrics.get("age_band_thresholds") or {}),
         "",
         "## Limitations and non-goals",
         "",
@@ -1675,13 +1786,18 @@ def run_training_pipeline(
         bundle.category_levels,
     )
     probabilities = bundle.predict_proba(test)
+    test_thresholds = bundle.thresholds(test) if bundle.threshold_rule else None
 
     target_test = test[config.target_column].to_numpy()
     overall = binary_metrics(
         target_test,
         probabilities,
-        threshold=threshold,
+        threshold=test_thresholds if test_thresholds is not None else threshold,
         n_bins=config.reliability_bins,
+    )
+    overall["threshold_rule"] = bundle.threshold_rule
+    overall["threshold_mode"] = (
+        "per_row" if test_thresholds is not None else "single"
     )
     overall["confidence_intervals"] = bootstrap_confidence_intervals(
         target_test,
@@ -1696,7 +1812,7 @@ def run_training_pipeline(
             target_test,
             probabilities,
             sample_weight=weights,
-            threshold=threshold,
+            threshold=test_thresholds if test_thresholds is not None else threshold,
             n_bins=config.reliability_bins,
         )
 
@@ -1708,6 +1824,7 @@ def run_training_pipeline(
         "split": split_summary,
         "calibrator": getattr(calibrator, "method", "unknown"),
         "seed_averaging": seed_averaging,
+        "age_band_thresholds": selected_record.threshold_rule,
     }
 
     secondary = config.secondary_target_column
@@ -1718,13 +1835,23 @@ def run_training_pipeline(
             **binary_metrics(
                 test.loc[secondary_mask, secondary].to_numpy(),
                 probabilities[secondary_mask],
-                threshold=threshold,
+                threshold=(
+                    test_thresholds[secondary_mask]
+                    if test_thresholds is not None
+                    else threshold
+                ),
                 n_bins=config.reliability_bins,
             ),
         }
 
     subgroup_rows = subgroup_metrics(
-        test, config.target_column, probabilities, config, overall, TEST_SPLIT
+        test,
+        config.target_column,
+        probabilities,
+        config,
+        overall,
+        TEST_SPLIT,
+        thresholds=test_thresholds,
     )
     calibration_curve = pd.DataFrame(
         reliability_curve(
@@ -1803,6 +1930,8 @@ def run_training_pipeline(
         },
         "feature_count": len(config.feature_columns),
         "feature_variant": config.metadata.get("feature_variant"),
+        "threshold_mode": overall.get("threshold_mode"),
+        "age_band_thresholds": selected_record.threshold_rule,
         "subgroup_rules": {
             "small_group_min_rows": config.small_group_min_rows,
             "small_group_min_positives": config.small_group_min_positives,

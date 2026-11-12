@@ -37,6 +37,7 @@ class ModelBundle:
     categorical_columns: tuple[str, ...] = ()
     category_levels: dict[str, list[str]] = field(default_factory=dict)
     threshold: float = 0.5
+    threshold_rule: dict = field(default_factory=dict)
     target_definition: str = ""
     metadata: dict = field(default_factory=dict)
     model_family: str = "lightgbm"
@@ -69,9 +70,40 @@ class ModelBundle:
         calibrated = np.asarray(self.calibrator.predict(scores), dtype=float)
         return np.clip(calibrated, 0.0, 1.0)
 
+    def thresholds(self, features) -> np.ndarray:
+        """Return the referral threshold for every row.
+
+        A bundle without a rule uses its single threshold. A rule with age bins
+        returns the band's threshold, and rows outside every band fall back to
+        the rule's default.
+        """
+        rows = len(features)
+        rule = self.threshold_rule or {}
+        if not rule:
+            return np.full(rows, float(self.threshold), dtype=float)
+        fallback = float(rule.get("default_threshold", self.threshold))
+        values = np.full(rows, fallback, dtype=float)
+        column = rule.get("column")
+        bins = rule.get("bins") or []
+        labels = rule.get("labels") or []
+        thresholds = rule.get("thresholds") or {}
+        if column in features.columns and bins and labels:
+            bands = pd.cut(
+                pd.to_numeric(features[column], errors="coerce"),
+                bins=list(bins),
+                labels=list(labels),
+                right=False,
+            )
+            bands = bands.astype("string").fillna("missing").astype(str).to_numpy()
+            values = np.asarray(
+                [float(thresholds.get(band, fallback)) for band in bands],
+                dtype=float,
+            )
+        return values
+
     def predict(self, features) -> np.ndarray:
-        """Return the referral flag at the bundle's chosen threshold."""
-        return (self.predict_proba(features) >= self.threshold).astype(int)
+        """Return the referral flag at the bundle's chosen threshold(s)."""
+        return (self.predict_proba(features) >= self.thresholds(features)).astype(int)
 
 
 def save_model_bundle(bundle: ModelBundle, path: str | Path) -> Path:

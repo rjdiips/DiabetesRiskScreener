@@ -252,7 +252,7 @@ def select_threshold(
     confusion = _confusion_at(y, p, threshold)
     rates = _rates(confusion)
     return {
-        "threshold": round(threshold, 6),
+        "threshold": float(threshold),
         "target_sensitivity": target_sensitivity,
         **rates,
         "confusion": confusion,
@@ -310,6 +310,87 @@ def threshold_analysis(
         )
     frame = pd.DataFrame(rows).sort_values("threshold").reset_index(drop=True)
     return frame
+
+
+def select_thresholds_by_group(
+    y_true,
+    y_score,
+    groups,
+    *,
+    target_sensitivity: float = 0.8,
+) -> dict:
+    """Choose one sensitivity-first threshold per group.
+
+    Age is the intended group: a single cut-off cannot meet the same sensitivity
+    target across a steep age gradient, so each age band gets its own operating
+    point. A group with a single class keeps the overall threshold.
+    """
+    raw_y = np.asarray(y_true, dtype=float)
+    raw_p = np.asarray(y_score, dtype=float)
+    mask = np.isfinite(raw_y) & np.isfinite(raw_p)
+    y = raw_y[mask]
+    p = np.clip(raw_p[mask], 0.0, 1.0)
+    labels = np.asarray(groups, dtype=object).astype(str)[mask]
+
+    default = select_threshold(y, p, target_sensitivity=target_sensitivity)
+    rows = {}
+    for group in sorted(set(labels)):
+        selected = labels == group
+        group_y = y[selected]
+        group_p = p[selected]
+        positives = int(group_y.sum())
+        if positives == 0:
+            report = {
+                "threshold": 1.0,
+                "target_sensitivity": target_sensitivity,
+                "sensitivity": None,
+                "specificity": None,
+                "ppv": None,
+                "npv": None,
+                "f1": None,
+                "confusion": None,
+            }
+        elif positives == len(group_y):
+            # A single-class group cannot be calibrated; refer every row so the
+            # band's sensitivity is 1.0 and the operating point is explicit.
+            report = {
+                "threshold": float(np.min(group_p)),
+                "target_sensitivity": target_sensitivity,
+                "sensitivity": 1.0,
+                "specificity": None,
+                "ppv": 1.0,
+                "npv": None,
+                "f1": None,
+                "confusion": None,
+            }
+        else:
+            report = select_threshold(
+                group_y,
+                group_p,
+                target_sensitivity=target_sensitivity,
+            )
+        evaluated = group_p >= report["threshold"]
+        report["n"] = int(selected.sum())
+        report["positives"] = positives
+        report["prevalence"] = round(positives / len(group_y), 6)
+        report["referral_rate"] = round(float(np.mean(evaluated)), 6)
+        rows[group] = report
+
+    return {
+        "target_sensitivity": target_sensitivity,
+        "default": default,
+        "groups": rows,
+    }
+
+
+def thresholds_for_groups(rule: dict, groups) -> np.ndarray:
+    """Expand a per-group threshold rule into one threshold per row."""
+    fallback = float(rule["default"]["threshold"])
+    values = rule.get("groups", {})
+    return np.asarray(
+        [float(values.get(str(group), {}).get("threshold", fallback)) for group in groups],
+        dtype=float,
+    )
 
 
 def metrics_at_threshold(y_true, y_score, threshold: float) -> dict:

@@ -175,11 +175,15 @@ def binary_metrics(
     y_score,
     *,
     sample_weight=None,
-    threshold: float | None = None,
+    threshold: float | np.ndarray | None = None,
     specificity: float = 0.8,
     n_bins: int = 10,
 ) -> dict:
-    """Compute discrimination, calibration, and operating-point metrics."""
+    """Compute discrimination, calibration, and operating-point metrics.
+
+    ``threshold`` may be a scalar or one threshold per row, so a decision rule
+    that varies by age band is scored with the same helper as a global cut-off.
+    """
     y, p, w = _clean(y_true, y_score, sample_weight)
     n = len(y)
     positives = int(y.sum())
@@ -188,7 +192,26 @@ def binary_metrics(
         total_weight = float(np.sum(w))
         if total_weight > 0:
             prevalence = _rate(float(np.sum(w * y)), total_weight)
-    predicted = (p >= threshold).astype(int) if threshold is not None else None
+
+    per_row_threshold = None
+    if threshold is not None and np.ndim(threshold) > 0:
+        raw_y = np.asarray(y_true, dtype=float)
+        raw_p = np.asarray(y_score, dtype=float)
+        mask = np.isfinite(raw_y) & np.isfinite(raw_p)
+        raw_w = (
+            None if sample_weight is None else np.asarray(sample_weight, dtype=float)
+        )
+        if raw_w is not None:
+            mask &= np.isfinite(raw_w) & (raw_w >= 0)
+        per_row_threshold = np.asarray(threshold, dtype=float)
+        if len(per_row_threshold) != len(raw_y):
+            raise ValueError("a per-row threshold must align with the scores")
+        per_row_threshold = per_row_threshold[mask]
+    predicted = (
+        None
+        if threshold is None
+        else (p >= (per_row_threshold if per_row_threshold is not None else threshold)).astype(int)
+    )
 
     confusion = None
     sensitivity = specificity_value = ppv = npv = f1 = None
@@ -243,7 +266,16 @@ def binary_metrics(
         "brier": brier,
         "log_loss": log_loss,
         "sensitivity_at_specificity_0_8": sensitivity_at_specificity(y, p, specificity, w),
-        "threshold": None if threshold is None else float(threshold),
+        "threshold": (
+            None
+            if threshold is None or per_row_threshold is not None
+            else float(threshold)
+        ),
+        "threshold_mode": (
+            "none"
+            if threshold is None
+            else ("per_row" if per_row_threshold is not None else "single")
+        ),
         "sensitivity": sensitivity,
         "specificity": specificity_value,
         "ppv": ppv,

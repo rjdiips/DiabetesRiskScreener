@@ -9,12 +9,14 @@ from test_pipeline import LIGHTGBM_TEST_PARAMS, pr_shaped_features
 from screener.comparison import (
     BUNDLE_BRIER_MARGIN,
     BUNDLE_PR_AUC_MARGIN,
+    SIMPLICITY_PR_AUC_MARGIN,
     attach_winner_test_metrics,
     choose_bundle,
     comparison_candidates,
     comparison_config,
     rank_candidates,
     run_comparison,
+    select_winner,
     write_comparison_artifacts,
 )
 from screener.pipeline import Candidate, prepare_training_data
@@ -122,6 +124,63 @@ def test_higher_pr_auc_candidate_is_vetoed_by_a_large_subgroup_gap():
 
     assert any("subgroup" in reason for reason in ranked[0]["vetoes"])
     assert ranked[1]["vetoes"] == []
+
+
+def test_subgroup_gap_margin_is_fifteen_points():
+    ranked = rank_candidates(
+        [
+            candidate("slightly_unequal", pr_auc=0.31, gap=0.14),
+            candidate("unequal", pr_auc=0.30, gap=0.16),
+        ]
+    )
+
+    assert ranked[0]["vetoes"] == []
+    assert any("subgroup" in reason for reason in ranked[1]["vetoes"])
+
+
+def test_age_band_gap_is_excluded_from_the_veto():
+    item = candidate("age_gradient", pr_auc=0.31, gap=0.70)
+    item["max_reliable_veto_sensitivity_gap"] = None
+
+    ranked = rank_candidates([item])
+
+    assert ranked[0]["vetoes"] == []
+
+
+def test_near_tied_regression_model_is_preferred():
+    ranked = rank_candidates(
+        [
+            candidate("tree", family="lightgbm", pr_auc=0.310),
+            candidate(
+                "spline",
+                family="logistic_spline",
+                pr_auc=0.310 - SIMPLICITY_PR_AUC_MARGIN + 0.001,
+            ),
+        ]
+    )
+
+    winner, reason = select_winner([item for item in ranked if not item["vetoes"]])
+
+    assert winner["label"] == "spline"
+    assert reason == "simplicity_preference"
+
+
+def test_tree_wins_when_the_regression_model_is_outside_the_simplicity_margin():
+    ranked = rank_candidates(
+        [
+            candidate("tree", family="lightgbm", pr_auc=0.320),
+            candidate(
+                "spline",
+                family="logistic_spline",
+                pr_auc=0.320 - SIMPLICITY_PR_AUC_MARGIN - 0.001,
+            ),
+        ]
+    )
+
+    winner, reason = select_winner([item for item in ranked if not item["vetoes"]])
+
+    assert winner["label"] == "tree"
+    assert reason == "ranking"
 
 
 def test_lower_pr_auc_candidate_wins_when_the_higher_one_is_vetoed():

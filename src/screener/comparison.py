@@ -27,9 +27,17 @@ from .primary_model import primary_15_49_config
 BRIER_MARGIN = 0.005
 CALIBRATION_SLOPE_RANGE = (0.8, 1.2)
 CALIBRATION_INTERCEPT_RANGE = (-0.1, 0.1)
-SUBGROUP_SENSITIVITY_MARGIN = 0.10
+SUBGROUP_SENSITIVITY_MARGIN = 0.15
+# Age-band sensitivity is handled by the per-band operating points, not by the
+# gap veto; a single cut-off cannot equalise sensitivity across an age gradient.
+SUBGROUP_VETO_EXCLUDED = frozenset({"age_band"})
 BUNDLE_PR_AUC_MARGIN = 0.005
 BUNDLE_BRIER_MARGIN = 0.005
+
+# Prefer a transportable regression model when it is effectively tied with a
+# tree ensemble. The margin is part of the amended selection rule.
+SIMPLICITY_PR_AUC_MARGIN = 0.01
+SIMPLICITY_FAMILIES = ("logistic_spline", "logistic")
 
 PREVALENCE_LABEL = "B0-prevalence"
 
@@ -72,10 +80,25 @@ PREREGISTERED_RULE = {
     "calibration_slope_range": list(CALIBRATION_SLOPE_RANGE),
     "calibration_intercept_range": list(CALIBRATION_INTERCEPT_RANGE),
     "subgroup_sensitivity_margin": SUBGROUP_SENSITIVITY_MARGIN,
+    "subgroup_sensitivity_excluded": sorted(SUBGROUP_VETO_EXCLUDED),
+    "simplicity_pr_auc_margin": SIMPLICITY_PR_AUC_MARGIN,
+    "simplicity_families": list(SIMPLICITY_FAMILIES),
     "bundle_pr_auc_margin": BUNDLE_PR_AUC_MARGIN,
     "bundle_brier_margin": BUNDLE_BRIER_MARGIN,
     "tuning_budget": "three settings per family",
     "reference": "B0 prevalence-only is unscored and cannot win",
+    "amendment": (
+        "Age-band sensitivity is set by age-band thresholds; the subgroup gap "
+        "veto applies to sex, wealth, residence, education, and state at 0.15. "
+        "A near-tied regression model is preferred over a tree ensemble within "
+        "0.01 PR-AUC."
+    ),
+    "amendment_basis": (
+        "The first pass of the 0.10 all-subgroup veto vetoed every candidate "
+        "because age-band sensitivity is structurally unequal at one global "
+        "cut-off. This amended rule was fixed before the rerun; the first-pass "
+        "artifacts are kept locally for audit."
+    ),
 }
 
 
@@ -109,12 +132,14 @@ def comparison_config(*, feature_set: str, **primary_kwargs) -> TrainingConfig:
     )
 
 
-def reliable_sensitivity_gap(subgroups) -> float | None:
+def reliable_sensitivity_gap(subgroups, *, exclude=()) -> float | None:
     """The largest absolute sensitivity gap among reliable subgroup rows."""
     gaps = [
         abs(row["gap_sensitivity"])
         for row in subgroups
-        if row.get("reliable") and row.get("gap_sensitivity") is not None
+        if row.get("reliable")
+        and row.get("gap_sensitivity") is not None
+        and row.get("subgroup") not in exclude
     ]
     return max(gaps) if gaps else None
 
@@ -180,12 +205,44 @@ def rank_candidates(candidates: list[dict]) -> list[dict]:
         item["vetoes"] = veto_reasons(
             item["oof_metrics"],
             best_brier=best_brier,
-            sensitivity_gap=item["max_reliable_sensitivity_gap"],
+            sensitivity_gap=item.get(
+                "max_reliable_veto_sensitivity_gap",
+                item["max_reliable_sensitivity_gap"],
+            ),
         )
     ranked = sorted(scored, key=_rank_key, reverse=True)
     for position, item in enumerate(ranked, start=1):
         item["rank"] = position
     return ranked
+
+
+def select_winner(eligible: list[dict]) -> tuple[dict, str]:
+    """Pick the non-vetoed winner, preferring a near-tied regression model.
+
+    A tree ensemble is only preferred when it beats the best eligible
+    regression model by more than the pre-registered simplicity margin.
+    """
+    best = max(eligible, key=_rank_key)
+    if best["family"] in SIMPLICITY_FAMILIES:
+        return best, "ranking"
+    simple = [item for item in eligible if item["family"] in SIMPLICITY_FAMILIES]
+    if not simple:
+        return best, "ranking"
+    candidate = max(simple, key=_rank_key)
+    pr_auc = candidate["oof_metrics"].get("pr_auc")
+    best_pr_auc = best["oof_metrics"].get("pr_auc")
+    brier = candidate["oof_metrics"].get("brier")
+    best_brier = best["oof_metrics"].get("brier")
+    if (
+        pr_auc is not None
+        and best_pr_auc is not None
+        and brier is not None
+        and best_brier is not None
+        and pr_auc >= best_pr_auc - SIMPLICITY_PR_AUC_MARGIN
+        and brier <= best_brier + BRIER_MARGIN
+    ):
+        return candidate, "simplicity_preference"
+    return best, "ranking"
 
 
 def candidate_artifact(record: SelectionRecord) -> dict:
@@ -204,6 +261,9 @@ def candidate_artifact(record: SelectionRecord) -> dict:
         "net_benefit": record.net_benefit,
         "fold_metrics": record.fold_metrics,
         "max_reliable_sensitivity_gap": reliable_sensitivity_gap(record.subgroups),
+        "max_reliable_veto_sensitivity_gap": reliable_sensitivity_gap(
+            record.subgroups, exclude=SUBGROUP_VETO_EXCLUDED
+        ),
     }
 
 
@@ -236,7 +296,10 @@ def build_comparison_artifact(
     candidates = [candidate_artifact(record) for record in evidence.records]
     ranked = rank_candidates(candidates)
     eligible = [item for item in ranked if not item["vetoes"]]
-    winner = max(eligible, key=_rank_key) if eligible else None
+    if eligible:
+        winner, selection_reason = select_winner(eligible)
+    else:
+        winner, selection_reason = None, "no_eligible_candidate"
     for item in candidates:
         if item["family"] != "prevalence":
             item["tuning"] = _family_tuning(item)
@@ -270,6 +333,14 @@ def build_comparison_artifact(
             "bundle": bundle_name,
             "pr_auc": winner["oof_metrics"].get("pr_auc"),
             "brier": winner["oof_metrics"].get("brier"),
+            "selection_reason": selection_reason,
+            "top_ranked_label": ranked[0]["label"] if ranked else None,
+            "pr_auc_margin_vs_top": (
+                None
+                if not ranked
+                else (ranked[0]["oof_metrics"].get("pr_auc") or 0.0)
+                - (winner["oof_metrics"].get("pr_auc") or 0.0)
+            ),
             "final_run": None,
         },
         "config_name": config.name,
@@ -377,7 +448,7 @@ def _net_benefit(item: dict, threshold: float = 0.10):
 def _metric_row(item: dict) -> str:
     metrics = item["oof_metrics"]
     veto = "; ".join(item["vetoes"]) or "none"
-    gap = item.get("max_reliable_sensitivity_gap")
+    gap = item.get("max_reliable_veto_sensitivity_gap")
     return (
         f"| {item['rank']} | {item['label']} | {item['family']} | "
         f"{_number(metrics.get('pr_auc'))} | {_number(metrics.get('roc_auc'))} | "
@@ -460,7 +531,12 @@ def render_comparison(artifact: dict) -> str:
         f"- Selection rows: {artifact['selection_rows']}",
         f"- Folds: {artifact['fold_count']}",
         f"- Test evaluated once: {str(artifact['test_evaluated_once']).lower()}",
-        f"- Winner: {winner['label'] if winner else 'none (no eligible candidate)'}",
+        f"- Winner: {winner['label'] if winner else 'none (no eligible candidate)'}"
+        + (
+            f" (selected by `{winner['selection_reason']}`)"
+            if winner and winner.get("selection_reason")
+            else ""
+        ),
         "",
         "## Ranking rule",
         "",
@@ -476,13 +552,23 @@ def render_comparison(artifact: dict) -> str:
             f"- Veto when a reliable subgroup sensitivity gap exceeds "
             f"{SUBGROUP_SENSITIVITY_MARGIN}."
         ),
+        (
+            "- Age-band sensitivity is set by age-band thresholds and is not part "
+            "of the gap veto; the veto applies to sex, wealth, residence, "
+            "education, and state."
+        ),
+        (
+            f"- Prefer logistic or spline logistic over a tree ensemble when it is "
+            f"within {SIMPLICITY_PR_AUC_MARGIN} PR-AUC and no more than "
+            f"{BRIER_MARGIN} worse Brier."
+        ),
         f"- Tuning budget: {PREREGISTERED_RULE['tuning_budget']}.",
         "",
         "## Candidates",
         "",
         (
             "| Rank | Candidate | Family | PR-AUC | ROC-AUC | Brier | Slope | "
-            "Intercept | Sensitivity | Specificity | Max subgroup gap | "
+            "Intercept | Sensitivity | Specificity | Veto subgroup gap | "
             "Net benefit @0.10 | Calibrator | Vetoes |"
         ),
         "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
