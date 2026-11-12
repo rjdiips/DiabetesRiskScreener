@@ -61,8 +61,16 @@ The winner refit with several random seeds, with predicted probabilities average
 _Avoid_: Ensemble, bagging, stacking
 
 **Screening threshold**:
-The probability cutoff that turns a predicted risk into a referral decision, chosen to meet a target sensitivity and stored with the deployed model.
+The probability cutoff that turns a predicted risk into a referral decision, chosen to meet a target sensitivity and stored with the deployed model. The deployed model stores one cutoff per age band so the same sensitivity target is met across the age gradient.
 _Avoid_: Cutoff, decision boundary, operating point
+
+**Age-band threshold**:
+The referral cutoff used inside one age band. It is chosen on out-of-fold predictions to meet the sensitivity target for that band, and it replaces a single global cutoff that would miss most young cases and refer almost every older adult.
+_Avoid_: Subgroup threshold, stratified cutoff
+
+**Feature bundle**:
+A pre-registered subset of the measurement features, created by removing one measurement block (anthropometry, blood pressure, or diet). A bundle competes for deployment only through the feature-bundle rule, which prefers fewer features only when performance is effectively unchanged.
+_Avoid_: Feature subset, reduced model
 
 ### Product
 
