@@ -40,5 +40,5 @@ Thumbs.db
 *.log
 
 # Local notes and agent working docs (kept out of version control)
-docs/
-.scratch/
+# docs/
+# .scratch/
