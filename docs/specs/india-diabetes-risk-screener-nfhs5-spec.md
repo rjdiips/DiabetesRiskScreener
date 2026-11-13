@@ -14,7 +14,7 @@ Model selection and launch scope follow `.scratch/model-shortlist/spec.md`. This
 
 - **Self-service product.** The launch surface is a self-service web app used by an individual on their own phone. There is no ASHA/ANM/clinic workflow, no referral queue, and no assumed access to a blood glucose test. The app gives a risk band, a plain-language explanation, and next steps the user can take; it never tells the user they have diabetes.
 - **Measurement model is the default.** Height, weight, and waist are self-reported from household scales and tape measures, which are commonly available. Blood pressure is optional where the user has a reading. The questionnaire-only model is the fallback for users who cannot provide measurements, not the default.
-- **Result presentation.** The app shows a 0–100 age-relative risk score, a three-level band (lower / moderate / higher), a speedometer-style gauge, and a small percentile curve. The score is the user's percentile within their age band, so 85 means “higher than 85% of people your age”. Bands are 0–49 lower, 50–79 moderate, 80–100 higher. The headline also gives the absolute probability as a natural frequency (“about 22 in 100 people like you had elevated glucose or diagnosed diabetes at the time of the survey”). The score is a communication device, not a diagnosis or a probability; the absolute probability is the risk estimate. The gauge and bands must use text labels as well as colour, large type, high contrast, and no decimals so older and low-numeracy users can read them.
+- **Result presentation.** The app shows a 0–100 age-relative risk score, a three-level band (lower / moderate / higher), a speedometer-style gauge, and a small distribution curve of predicted risk for the user's age band. The score is the user's percentile within their age band, so 85 means “higher than 85% of people your age”. Bands are 0–49 lower, 50–79 moderate, 80–100 higher. The headline also gives the absolute probability as a natural frequency (“about 22 in 100 people like you had elevated glucose or diagnosed diabetes at the time of the survey”). The curve marks the user's absolute risk; the area to the left of the marker equals the score. The score is a communication device, not a diagnosis or a probability; the absolute probability is the risk estimate. The gauge and bands must use text labels as well as colour, large type, high contrast, and no decimals so older and low-numeracy users can read them.
 - **Fixed shortlist.** The launch comparison is a prevalence-only reference plus seven scored candidates: logistic regression, spline logistic regression, random forest, LightGBM, XGBoost, CatBoost, and monotone-constrained LightGBM. The list is fixed before scoring; no candidate is added after results are seen.
 - **Ensemble scope.** The 5-fold × 10-seed ensemble applies only to the selected winner, and only when the winner is stochastic. It is not run for every candidate. A deterministic winner (logistic regression) is deployed as a single fitted model.
 - **Feature sets.** All seven families run on both the measurement feature set and the questionnaire-only feature set. The measurement pool selects the deployed default; questionnaire-only results are the accessibility fallback for users without measurements and do not compete for the default deployment.
@@ -801,7 +801,7 @@ Write a model card covering:
 - Headline: estimated probability as a natural frequency (“about 22 in 100 people like you…”).
 - A 0–100 age-relative risk score with a speedometer gauge and three labelled zones.
 - Band: lower / moderate / higher, labelled “compared with people your age”.
-- A small percentile curve for the user’s age band with a “You are here” marker.
+- A small distribution curve of predicted risk for the user’s age band, with a “You are here” marker; the area to the left of the marker equals the score.
 - One sentence under the gauge explaining that the score compares the user with people of the same age, not a probability.
 - Top 5 contributing factors.
 - “What this means” panel.
@@ -851,7 +851,7 @@ Write a model card covering:
 > At the time of the NFHS-5 survey, about 22 in 100 adults with a similar profile had elevated random blood glucose or a reported diabetes diagnosis.  
 > **Your age-relative score: 85 / 100** — higher than about 85% of people aged 45–49.  
 > [Speedometer: lower 0–49 | moderate 50–79 | higher 80–100; needle at 85]  
-> [Percentile curve for ages 45–49, with a “You are here” marker at 85]  
+> [Distribution of predicted risk for ages 45–49, with a “You are here” marker at 22 in 100]  
 > Your score is high for your age, but the absolute chance is about 22 in 100. This is not a diagnosis. If you can access a blood glucose test, consider getting one; it is also reasonable to discuss this result with a clinician. If you cannot access a test, focus on the risk factors you can change and seek care if you develop symptoms.  
 > The model does not predict whether you will develop diabetes in the future.
 
@@ -910,10 +910,10 @@ Response:
   "age_band": "45-49",
   "percentile": 85,
   "score_bands": {"lower": 49, "moderate": 79, "higher": 100},
-  "score_curve": {
-    "bins": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-    "counts": [120, 240, 380, 520, 610, 700, 660, 540, 420, 260],
-    "marker": 85
+  "risk_curve": {
+    "bins": [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    "counts": [3200, 2100, 1200, 700, 400, 220, 120, 60, 30, 15],
+    "marker": 0.22
   },
   "top_factors": [
     {

@@ -97,7 +97,7 @@ A neural net and one algorithmic feature-selection experiment are explored only 
 - Apply the chosen calibrator to test predictions exactly once.
 - The deployed score is the user's percentile within their age band, from 0 to 100. Bands are 0–49 lower, 50–79 moderate, and 80–100 higher. The score is a comparison, not a probability.
 - Show the absolute probability as a natural frequency alongside the score, so a high percentile in a young age group is not mistaken for a high absolute risk.
-- Store the score reference (the age-band distribution) with the frozen artifact; report the band distribution, calibration by band, and subgroup band rates.
+- Store the score reference (the age-band distribution of predicted risk) with the frozen artifact; report the band distribution, calibration by band, and subgroup band rates.
 - The 80%-sensitivity threshold remains a reference operating point for model selection and reporting, not the app's primary output.
 - Report the reference 80%-sensitivity operating point, confusion matrix, sensitivity, specificity, PPV, NPV, F1, calibration slope and intercept, Brier, log loss, and reliability curves for every candidate.
 

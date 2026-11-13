@@ -65,8 +65,8 @@ The user's percentile within their age band, from 0 to 100. A score of 85 means 
 _Avoid_: Risk percentage, points score, probability score
 
 **Percentile curve**:
-A small distribution of age-relative scores for the user's age band, with the user's position marked. It shows how unusual the score is for that age, not the chance of disease.
-_Avoid_: Bell curve, risk curve
+A small distribution of predicted risk for the user's age band, with the user's absolute risk marked. The area to the left of the marker is the age-relative score. It shows how unusual the risk is for that age, not the chance of disease.
+_Avoid_: Bell curve, score curve
 
 **Feature bundle**:
 A pre-registered subset of the measurement features, created by removing one measurement block (anthropometry, blood pressure, or diet). A bundle competes for deployment only through the feature-bundle rule, which prefers fewer features only when performance is effectively unchanged.
