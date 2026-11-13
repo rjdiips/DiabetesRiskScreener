@@ -14,13 +14,13 @@ Model selection and launch scope follow `.scratch/model-shortlist/spec.md`. This
 
 - **Self-service product.** The launch surface is a self-service web app used by an individual on their own phone. There is no ASHA/ANM/clinic workflow, no referral queue, and no assumed access to a blood glucose test. The app gives a risk band, a plain-language explanation, and next steps the user can take; it never tells the user they have diabetes.
 - **Measurement model is the default.** Height, weight, and waist are self-reported from household scales and tape measures, which are commonly available. Blood pressure is optional where the user has a reading. The questionnaire-only model is the fallback for users who cannot provide measurements, not the default.
-- **Operating point.** The app shows a user-facing risk band (lower / moderate / higher), not a binary referral. The band cut-offs are chosen to inform the user and are recorded with the frozen model; they are not sized to a health-worker referral capacity. Age-band cut-offs may be used so the bands mean the same thing across ages.
+- **Result presentation.** The app shows a 0–100 age-relative risk score, a three-level band (lower / moderate / higher), a speedometer-style gauge, and a small percentile curve. The score is the user's percentile within their age band, so 85 means “higher than 85% of people your age”. Bands are 0–49 lower, 50–79 moderate, 80–100 higher. The headline also gives the absolute probability as a natural frequency (“about 22 in 100 people like you had elevated glucose or diagnosed diabetes at the time of the survey”). The score is a communication device, not a diagnosis or a probability; the absolute probability is the risk estimate. The gauge and bands must use text labels as well as colour, large type, high contrast, and no decimals so older and low-numeracy users can read them.
 - **Fixed shortlist.** The launch comparison is a prevalence-only reference plus seven scored candidates: logistic regression, spline logistic regression, random forest, LightGBM, XGBoost, CatBoost, and monotone-constrained LightGBM. The list is fixed before scoring; no candidate is added after results are seen.
 - **Ensemble scope.** The 5-fold × 10-seed ensemble applies only to the selected winner, and only when the winner is stochastic. It is not run for every candidate. A deterministic winner (logistic regression) is deployed as a single fitted model.
 - **Feature sets.** All seven families run on both the measurement feature set and the questionnaire-only feature set. The measurement pool selects the deployed default; questionnaire-only results are the accessibility fallback for users without measurements and do not compete for the default deployment.
 - **Training and calibration.** All candidates train unweighted. Class weighting, SMOTE, and resampling are not used for selection. Calibration is fitted post hoc on out-of-fold predictions, and the operating cut-offs are chosen on out-of-fold predictions.
 - **Ranking.** PR-AUC ranks candidates, with calibration and subgroup gaps as vetoes. The held-out test set is evaluated once and is not used for ranking, calibration, or threshold selection.
-- **Age-band operating points.** The risk-band cut-offs are chosen inside each age band, because one global cut-off cannot mean the same thing across a steep age gradient. The subgroup sensitivity-gap veto applies to sex, wealth, residence, education, and state at 0.15; age-band performance is reported at its own thresholds. This amends the first shortlist pass, which applied the gap veto to age bands at one global cut-off and found no eligible candidate.
+- **Age-relative scoring.** The score is the percentile within the user's age band, so the gauge and bands mean the same thing at every age. The subgroup sensitivity-gap veto applies to sex, wealth, residence, education, and state at 0.15; age-band performance and score-band rates are reported. The score-band rates are a communication report, not a new deployment veto.
 - **Feature bundles.** The measurement set is ablated into the pre-registered `measurement_full`, `measurement_no_anthropometry`, `measurement_no_bp`, and `measurement_no_diet` bundles. A smaller bundle is deployed only when its winner is within 0.005 PR-AUC of, and no more than 0.005 Brier worse than, the best eligible bundle, with ties broken by fewer features.
 - **HbA1c sensitivity withdrawn.** The public NFHS-5 release exposes dried-blood-spot *eligibility* (`shdbs`, 6.3%) but no HbA1c values, and publishes no biomarker recode. The HbA1c sensitivity target in §13 is therefore not implementable from this data. The fact-sheet target remains the secondary outcome.
 - **PR sensitivity runs.** PR 15+ and PR 15–49 are rebuilt with the same recipe after the primary winner is frozen. Until then, the existing PR artifacts are the previous recipe and must not be quoted beside new primary numbers.
@@ -200,7 +200,7 @@ Wants a private, questionnaire-based estimate on their own phone. May have a sca
 | Brier score | Lower than uncalibrated baseline |
 | Calibration | Reliability curve close to diagonal; report slope and intercept |
 | Sensitivity at 80% specificity | Report and compare to baseline |
-| Sensitivity at chosen band cut-offs | ≥ 80% where it produces a usable band; report the achieved sensitivity, flag rate, and trade-off |
+| Score-band reporting | Band distribution, calibration by band, and subgroup band rates; absolute probability reported as a natural frequency |
 | Subgroup performance | Report by wealth, caste/tribe, religion, gender, rural/urban, state |
 | Household leakage | Zero household overlap between train and test |
 
@@ -623,15 +623,16 @@ Report all four. The measurement model is the default launch model. The state mo
 - Show weighted and unweighted calibration curves.
 - Report calibration by state and wealth quintile.
 
-### Threshold selection
+### Score bands
 
-- Choose risk-band cut-offs so the band means something useful to the user, starting from a sensitivity-first operating point and reporting the trade-off.
-- For a screening aid, aim for **≥ 80% sensitivity** where that produces a usable band; do not force it if it labels most users high risk.
-- Report the cut-offs, confusion matrix, sensitivity, specificity, PPV, and NPV.
-- Do not size the cut-offs to a health-worker referral queue; there is no referral queue.
-- Do not use 0.5 by default.
-- Show the band cut-offs and what they mean in the UI and model card.
-- **Open decision (13 November 2026).** The first freeze used ≥80% sensitivity inside each age band. On the real data that flags about 75% of users as higher risk, which is too broad for a user-facing band. The final band split is a product decision and must be recorded before the public freeze. The candidates are a within-age fixed split (for example higher 20%, moderate 30%, lower 50%) or a two-tier “test now / recheck” policy. The model card must report the case capture and subgroup gaps for whichever policy is chosen.
+- The deployed score is the user's **percentile within their age band**, from 0 to 100. It is a comparison, not a probability.
+- Bands: **0–49 lower**, **50–79 moderate**, **80–100 higher**.
+- Show the **absolute probability** as a natural frequency alongside the score, so a high percentile in a young age group is not mistaken for a high absolute risk.
+- Report the band distribution, calibration by band, and subgroup band rates.
+- Do not use a points score or a fake 0–100 point total; the score is the percentile.
+- Store the score reference (the age-band distribution) with the frozen model; the test set is used once to report band-level performance.
+- The 80%-sensitivity threshold remains a reference operating point for model selection and reporting, not the app's primary output.
+- **Accessibility:** large type, high contrast, colour plus text labels, no decimals, no animation, and a one-sentence explanation under the gauge.
 
 ---
 
@@ -797,9 +798,11 @@ Write a model card covering:
 
 #### 2. Result
 
-- Risk percentage.
-- Risk band: lower / moderate / higher.
-- Band cut-offs used.
+- Headline: estimated probability as a natural frequency (“about 22 in 100 people like you…”).
+- A 0–100 age-relative risk score with a speedometer gauge and three labelled zones.
+- Band: lower / moderate / higher, labelled “compared with people your age”.
+- A small percentile curve for the user’s age band with a “You are here” marker.
+- One sentence under the gauge explaining that the score compares the user with people of the same age, not a probability.
 - Top 5 contributing factors.
 - “What this means” panel.
 - “What this does not mean” panel.
@@ -810,6 +813,7 @@ Write a model card covering:
 - A note that many people do not have easy access to a test, and what to do instead.
 - Model version.
 - Disclaimer.
+- Accessibility: large type, high contrast, colour plus text labels, no decimals, no animation, and a readable layout on a small phone.
 
 #### 3. Model
 
@@ -843,9 +847,12 @@ Write a model card covering:
 
 ### Example result copy
 
-> **Estimated probability: 22%**  
-> This means that, in the NFHS-5 survey data, about 22 in 100 adults with a similar profile had elevated random blood glucose or a reported diabetes diagnosis.  
-> This is not a diagnosis. If you can access a blood glucose test, consider getting one; it is also reasonable to discuss this result with a clinician. If you cannot access a test, focus on the risk factors you can change and seek care if you develop symptoms.  
+> **Your risk: about 22 in 100 people like you**  
+> At the time of the NFHS-5 survey, about 22 in 100 adults with a similar profile had elevated random blood glucose or a reported diabetes diagnosis.  
+> **Your age-relative score: 85 / 100** — higher than about 85% of people aged 45–49.  
+> [Speedometer: lower 0–49 | moderate 50–79 | higher 80–100; needle at 85]  
+> [Percentile curve for ages 45–49, with a “You are here” marker at 85]  
+> Your score is high for your age, but the absolute chance is about 22 in 100. This is not a diagnosis. If you can access a blood glucose test, consider getting one; it is also reasonable to discuss this result with a clinician. If you cannot access a test, focus on the risk factors you can change and seek care if you develop symptoms.  
 > The model does not predict whether you will develop diabetes in the future.
 
 ---
@@ -897,9 +904,17 @@ Response:
 ```json
 {
   "risk": 0.22,
+  "risk_score": 85,
   "risk_band": "higher",
   "target": "elevated_random_blood_glucose_or_diagnosed_diabetes",
-  "band_cutoffs": {"higher": 0.18, "moderate": 0.10},
+  "age_band": "45-49",
+  "percentile": 85,
+  "score_bands": {"lower": 49, "moderate": 79, "higher": 100},
+  "score_curve": {
+    "bins": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+    "counts": [120, 240, 380, 520, 610, 700, 660, 540, 420, 260],
+    "marker": 85
+  },
   "top_factors": [
     {
       "feature": "Waist circumference",
@@ -1024,7 +1039,7 @@ Model artifacts
 ### Inference path
 
 - The browser sends the validated feature payload to `POST /api/predict`.
-- FastAPI returns the calibrated probability, risk band, band cut-offs, top factors, guidance copy, and model version.
+- FastAPI returns the calibrated probability, age-relative risk score, band, percentile curve, top factors, guidance copy, and model version.
 - The frontend does not run a second model implementation; UI decisions and API decisions come from the same response.
 - If the API is unavailable, show a retry state. Do not invent or cache a risk score.
 
@@ -1157,7 +1172,7 @@ india-diabetes-risk-screener/
 ### Web app tests
 
 - Screener validates required fields and submits a prediction.
-- Result page renders risk, band, band cut-offs, top factors, guidance, and disclaimer.
+- Result page renders risk, score, gauge, band, percentile curve, top factors, guidance, and disclaimer.
 - Model page renders metrics, calibration, subgroup table, and model version.
 - API-unavailable state shows a retry, not a fabricated score.
 

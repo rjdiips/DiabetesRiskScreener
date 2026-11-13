@@ -60,13 +60,13 @@ _Avoid_: Production model, final model
 The winner refit with several random seeds, with predicted probabilities averaged across the refits. It reduces seed-to-seed luck; it is not a mixture of different model families.
 _Avoid_: Ensemble, bagging, stacking
 
-**Screening threshold**:
-The probability cutoff that turns a predicted risk into a risk band for the user. The deployed model stores one cutoff per age band so the band means the same thing across the age gradient.
-_Avoid_: Cutoff, decision boundary, operating point
+**Risk score (age-relative)**:
+The user's percentile within their age band, from 0 to 100. A score of 85 means the predicted risk is higher than 85% of people of the same age. It is a comparison, not a probability; the absolute probability is shown separately.
+_Avoid_: Risk percentage, points score, probability score
 
-**Age-band threshold**:
-The risk-band cutoff used inside one age band. It is chosen on out-of-fold predictions for that band, and it replaces a single global cutoff that would miss most young cases and flag almost every older adult.
-_Avoid_: Subgroup threshold, stratified cutoff
+**Percentile curve**:
+A small distribution of age-relative scores for the user's age band, with the user's position marked. It shows how unusual the score is for that age, not the chance of disease.
+_Avoid_: Bell curve, risk curve
 
 **Feature bundle**:
 A pre-registered subset of the measurement features, created by removing one measurement block (anthropometry, blood pressure, or diet). A bundle competes for deployment only through the feature-bundle rule, which prefers fewer features only when performance is effectively unchanged.
@@ -79,5 +79,5 @@ The web surface an individual uses: the questionnaire, result, model transparenc
 _Avoid_: App, UI, frontend, demo
 
 **Risk band**:
-The app's output of lower, moderate, or higher risk derived from the calibrated probability and the band cut-offs. It is guidance on what to do next, never a diagnosis and never a guarantee that a blood test is available.
+The app's coarse label (lower / moderate / higher) derived from the age-relative score: 0–49 lower, 50–79 moderate, 80–100 higher. It means “compared with people your age”, not a probability, a diagnosis, or a guarantee that a blood test is available.
 _Avoid_: Referral, diagnosis, prediction, classification

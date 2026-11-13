@@ -9,7 +9,9 @@ A research and portfolio project that estimates the probability of elevated rand
 - A self-service web risk assessment for individuals, built on NFHS-5.
 - A calibrated model with household-grouped validation.
 - Self-reported height, weight, and waist; blood pressure is optional.
-- A lower / moderate / higher risk band with plain-language next steps, not a referral.
+- A 0–100 age-relative score, a lower / moderate / higher band, a speedometer gauge, and a percentile curve.
+- The absolute probability as a plain-language frequency (“about 22 in 100 people like you”).
+- Plain-language next steps, not a referral.
 - A FastAPI service and web demo.
 - A calibration, subgroup, and fairness report.
 

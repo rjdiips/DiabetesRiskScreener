@@ -14,8 +14,12 @@
 - [ ] Old PR runs and the old comparison outputs are removed; one answer set remains.
 - [ ] Sample verification passes for every documented count.
 - [ ] The README results table and run paths quote the new run records exactly, including the selected feature bundle and count.
-- [ ] The model card states the deployed family, selected bundle and feature count, threshold, calibration, subgroup gaps, and limitations, and quotes the new run records.
+- [ ] The model card states the deployed family, selected bundle and feature count, age-relative score reference and bands, calibration, subgroup gaps, and limitations, and quotes the new run records.
 - [ ] The main spec's model-selection section names the pre-registered feature bundles, the feature-bundle rule, and the leakage-safe selection phases, or records why they are delegated to the shortlist spec.
 - [ ] No environment claim contradicts the interpreter recorded in the run.
 - [ ] The glossary's exploration-bucket, promotion-rule, and ranking-rule entries are checked against the frozen run and still consistent.
 - [ ] No microdata, split assignment, per-respondent SHAP values, or model binary is committed.
+
+## Comments
+
+- 2026-11-14: The published model card must describe the age-relative score, bands, gauge, percentile curve, and absolute probability, not a single threshold.
