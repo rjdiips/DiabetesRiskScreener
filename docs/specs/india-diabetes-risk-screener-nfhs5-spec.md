@@ -14,7 +14,7 @@ Model selection and launch scope follow `.scratch/model-shortlist/spec.md`. This
 
 - **Self-service product.** The launch surface is a self-service web app used by an individual on their own phone. There is no ASHA/ANM/clinic workflow, no referral queue, and no assumed access to a blood glucose test. The app gives a risk band, a plain-language explanation, and next steps the user can take; it never tells the user they have diabetes.
 - **Measurement model is the default.** Height, weight, and waist are self-reported from household scales and tape measures, which are commonly available. Blood pressure is optional where the user has a reading. The questionnaire-only model is the fallback for users who cannot provide measurements, not the default.
-- **Result presentation.** The app shows a 0–100 age-relative risk score, a three-level band (lower / moderate / higher), a speedometer-style gauge, and a small distribution curve of predicted risk for the user's age band. The score is the user's percentile within their age band, so 85 means “higher than 85% of people your age”. Bands are 0–49 lower, 50–79 moderate, 80–100 higher. The headline also gives the absolute probability as a natural frequency (“about 22 in 100 people like you had elevated glucose or diagnosed diabetes at the time of the survey”). The curve marks the user's absolute risk; the area to the left of the marker equals the score. The score is a communication device, not a diagnosis or a probability; the absolute probability is the risk estimate. The gauge and bands must use text labels as well as colour, large type, high contrast, and no decimals so older and low-numeracy users can read them.
+- **Result presentation.** The app shows a 0–100 age-relative risk score, a three-level band (lower / moderate / higher), a speedometer-style gauge, and a small distribution curve of predicted risk for the user's age band. The score is the user's percentile within their age band, so 85 means “higher than 85% of people your age”. Bands are 0–49 lower, 50–79 moderate, 80–100 higher. The headline also gives the absolute probability as a natural frequency (“about 22 in 100 people like you had elevated glucose or diagnosed diabetes at the time of the survey”). The curve marks the user's absolute risk; the area to the left of the marker equals the score. The score is a communication device, not a diagnosis or a probability; the absolute probability is the risk estimate.
 - **Fixed shortlist.** The launch comparison is a prevalence-only reference plus seven scored candidates: logistic regression, spline logistic regression, random forest, LightGBM, XGBoost, CatBoost, and monotone-constrained LightGBM. The list is fixed before scoring; no candidate is added after results are seen.
 - **Ensemble scope.** The 5-fold × 10-seed ensemble applies only to the selected winner, and only when the winner is stochastic. It is not run for every candidate. A deterministic winner (logistic regression) is deployed as a single fitted model.
 - **Feature sets.** All seven families run on both the measurement feature set and the questionnaire-only feature set. The measurement pool selects the deployed default; questionnaire-only results are the accessibility fallback for users without measurements and do not compete for the default deployment.
@@ -632,7 +632,6 @@ Report all four. The measurement model is the default launch model. The state mo
 - Do not use a points score or a fake 0–100 point total; the score is the percentile.
 - Store the score reference (the age-band distribution) with the frozen model; the test set is used once to report band-level performance.
 - The 80%-sensitivity threshold remains a reference operating point for model selection and reporting, not the app's primary output.
-- **Accessibility:** large type, high contrast, colour plus text labels, no decimals, no animation, and a one-sentence explanation under the gauge.
 
 ---
 
@@ -813,7 +812,6 @@ Write a model card covering:
 - A note that many people do not have easy access to a test, and what to do instead.
 - Model version.
 - Disclaimer.
-- Accessibility: large type, high contrast, colour plus text labels, no decimals, no animation, and a readable layout on a small phone.
 
 #### 3. Model
 
