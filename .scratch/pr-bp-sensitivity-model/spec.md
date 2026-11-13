@@ -3,6 +3,8 @@
 Status: ready-for-agent
 Depends on: primary-model-pipeline
 
+> **Product scope superseded (13 November 2026).** The launch product is a self-service web app for individuals, not a health-worker tool. Health-worker wording below is historical; the model, split, and sensitivity-analysis decisions remain in force.
+
 ## Problem Statement
 
 The primary model covers adults aged 15–49 only, because the IR/MR recodes are restricted to women 15–49 and men 15–54. That leaves out the adults with the highest diabetes prevalence: in the PR household-member file, adults aged 50+ have 27.20% prevalence, compared with 8.75% among adults 15–49. The primary model therefore cannot say whether its risk pattern holds for older adults, and it is approximately 88% female.

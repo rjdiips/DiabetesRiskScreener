@@ -2,6 +2,8 @@
 
 Status: ready-for-agent
 
+> **Product scope superseded (13 November 2026).** The launch product is a self-service web app for individuals, not a health-worker tool, and a blood test is not assumed to be available. The health-worker and referral wording below is historical; the model pipeline decisions remain in force.
+
 ## Problem Statement
 
 The project now has a clean, harmonised IR/MR feature table, but no way to establish whether a model built on it is trustworthy. A naive random split would put members of the same household or cluster on both sides of the split, inflating performance. A single accuracy number would hide the class imbalance and the calibration problems that matter for a screening tool. And without subgroup reporting, the model could look good overall while performing poorly for men, older adults, or poorer households.

@@ -2,6 +2,10 @@
 
 **Status:** ready-for-agent
 
+## Product scope amendment (13 November 2026)
+
+The product is a self-service web app for individuals, not a health-worker tool. There is no ASHA/ANM/clinic workflow, no referral queue, and no assumed access to a blood glucose test. The measurement model remains the deployed default: height, weight, and waist are self-reported from scales and tape measures that are commonly available at home, and blood pressure is optional where the user has a reading. The questionnaire-only model is the fallback for users who cannot provide measurements. The operating point is a user-facing risk band (lower / moderate / higher), not a binary referral. The shortlist, comparison, ranking, feature-bundle, promotion, and leakage rules below are unchanged.
+
 ## Problem Statement
 
 The published primary model was selected from three families (prevalence-only, logistic regression, LightGBM) on a single seed, with class-weighted training and a PR-AUC ranking rule. The main spec asks for an accuracy-first choice among pre-registered candidates, four model variants, calibration and subgroup gates, and a multi-seed ensemble. The shortlist research (`.scratch/model-shortlist/research.md`) shows the credible performance ceiling for this task is ROC-AUC 0.68–0.71, so the work is not a hunt for a step change; it is a controlled comparison that can detect small real gains and protect calibration and fairness.
@@ -32,7 +36,7 @@ A neural net and one algorithmic feature-selection experiment are explored only 
 10. As a portfolio author, I want the PR sensitivity runs rebuilt with the same recipe, so that the published comparison does not mix methods.
 11. As a maintainer, I want pre-registered feature bundles tested before the winner is frozen, so a smaller deployment set can be chosen without post-hoc feature selection.
 12. As a researcher, I want candidate selection to use out-of-fold predictions only, so that the winner is not chosen on the test set.
-13. As a researcher, I want calibration and the screening threshold fitted per candidate on that candidate's own out-of-fold predictions, so that the reported operating point is honest.
+13. As a researcher, I want calibration and the risk-band cut-offs fitted per candidate on that candidate's own out-of-fold predictions, so that the reported operating point is honest.
 14. As a researcher, I want net benefit at plausible thresholds available from out-of-fold evidence, so that clinical-utility context is not derived from the test set.
 15. As a reviewer, I want to see that the test split was untouched during selection, so that I can trust the winner and its score.
 16. As a reviewer, I want per-candidate out-of-fold metrics, subgroup gaps, and threshold metrics, so that the ranking and every veto can be audited.
@@ -64,7 +68,7 @@ A neural net and one algorithmic feature-selection experiment are explored only 
 - Measurement feature set: the existing 32 primary features.
 - Questionnaire-only feature set: the same features without waist, hip, waist-to-hip ratio, systolic and diastolic BP, BP reading count, measured high BP, and BP medication. It keeps age, sex, height, weight, BMI, education, wealth, residence, marital status, children ever born, tobacco, alcohol, and diet.
 - Pre-registered measurement bundles: `measurement_full` (32), `measurement_no_anthropometry` (26; drops height, weight, BMI, waist, hip, and waist-to-hip ratio), `measurement_no_bp` (27; drops the five BP columns), and `measurement_no_diet` (23; drops the nine diet columns). The substance block is not ablated because it is cheap to collect and has a strong clinical prior.
-- All seven families run on each competing measurement bundle and on the questionnaire-only set. The questionnaire-only results are the accessibility comparison and do not compete for deployment.
+- All seven families run on each competing measurement bundle and on the questionnaire-only set. The questionnaire-only results are the fallback for users who cannot provide measurements and do not compete for the default deployment.
 - The measurement pool selects the deployed model. Its eligible bundles are compared by the feature-bundle rule below.
 
 ### Pipeline phases
@@ -72,7 +76,7 @@ A neural net and one algorithmic feature-selection experiment are explored only 
 - **Preparation seam.** A public preparation step applies the configured sample filters, resolves or loads the cluster-grouped split assignment, runs the existing cluster and household leakage checks, and returns the development frame, test frame, assignment, row counts, and split summary. The comparison runner receives the development frame; the final run receives both frames.
 - **Candidate configuration.** A candidate records a model family, a parameter mapping, and a stable label. Configuration can supply a candidate list and a pinned candidate. The trial loop is driven by the configured candidates, not a hard-coded family tuple. With no candidate list, the documented family list and the existing winner order are preserved. With a pinned candidate, the final run scores and fits exactly that family and those parameters.
 - **Selection evidence.** `evaluate_candidates(development, config)` scores every configured candidate on the existing development folds and returns out-of-fold evidence. It accepts only development rows, validates that every row has the development split and a valid fold, and rejects any frame containing a test row before fitting anything. It returns evidence, not a winner.
-- **Selection evidence contents.** Each candidate record contains the candidate label, family, and parameters; raw out-of-fold scores, calibrated out-of-fold probabilities, target, covered mask, and fold identifier; the selected calibration method and report; the selected screening threshold with confusion counts and rates; discrimination, calibration, Brier, log loss, and ECE; development subgroup metrics with the existing reliability and audit rules; the reliability curve; net benefit at 0.05–0.20; fold-level metrics; and the tuning record.
+- **Selection evidence contents.** Each candidate record contains the candidate label, family, and parameters; raw out-of-fold scores, calibrated out-of-fold probabilities, target, covered mask, and fold identifier; the selected calibration method and report; the selected operating cut-offs with confusion counts and rates; discrimination, calibration, Brier, log loss, and ECE; development subgroup metrics with the existing reliability and audit rules; the reliability curve; net benefit at 0.05–0.20; fold-level metrics; and the tuning record.
 - **Metrics prefactor.** Add a decision-curve net-benefit helper at 0.05–0.20. Make the subgroup-metrics helper work for development out-of-fold rows or test rows, carrying an explicit split label so the two reports cannot be confused.
 - **Fit handle.** The selection result exposes a fit handle that refits any named candidate on all development rows and returns the model bundle used at inference, with the raw model, category levels, calibrator, threshold, feature columns, and candidate metadata. The fit handle is the only bridge from selection to final evaluation and the extension point for seed averaging.
 - **Final evaluation.** The existing single-model pipeline composes the phases: prepare the data, run selection or accept the pinned candidate, fit that candidate, read the test split exactly once, and write the existing artifact set. No code path inside selection computes test metrics, test subgroup rows, test calibration curves, test feature importance, or test SHAP values.
@@ -91,7 +95,8 @@ A neural net and one algorithmic feature-selection experiment are explored only 
 
 - Fit isotonic and Platt on out-of-fold predictions for every candidate; choose by Brier and log loss.
 - Apply the chosen calibrator to test predictions exactly once.
-- Choose the screening threshold on out-of-fold predictions at a target of at least 80% sensitivity, maximising specificity; ties break by PPV.
+- Choose the risk-band cut-offs on out-of-fold predictions, starting from a target of at least 80% sensitivity where that produces a usable band; record the final cut-offs and the trade-off with the model.
+- The first freeze used 80% sensitivity inside each age band. On the real data it flags about 75% of users, which is too broad for a user-facing band. The final split is an open product decision recorded before the public freeze (a within-age fixed split such as higher 20% / moderate 30% / lower 50%, or a two-tier test-now/recheck policy).
 - Report threshold, confusion matrix, sensitivity, specificity, PPV, NPV, F1, calibration slope and intercept, Brier, log loss, and reliability curves for every candidate.
 
 ### Ranking rule
@@ -175,7 +180,7 @@ Good tests assert externally visible behaviour at the highest seam: the preparat
 - SMOTE or any resampling method.
 - HbA1c as a feature or target; the public release has no HbA1c values.
 - External validation, NFHS-6, district estimates, and fairness mitigation.
-- Changing the primary target definition, the exclusion rules, the split assignment, or the screening-threshold target.
+- Changing the primary target definition, the exclusion rules, the split assignment, or the operating-point target.
 - Open-ended feature search; only the pre-registered measurement bundles and the single post-freeze experiment are in scope.
 - Changing the existing default winner order for primary and PR runs.
 

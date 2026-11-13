@@ -53,7 +53,7 @@ The shortlisted candidate that the ranking rule selects. The winner is not neces
 _Avoid_: Best model, top model
 
 **Deployed model**:
-The artifact the API serves. It is derived from the winner, possibly as a seed-averaged ensemble, and is the only model the app ever calls.
+The artifact the API serves to the self-service app. It is derived from the winner, possibly as a seed-averaged ensemble, and is the only model the app calls by default.
 _Avoid_: Production model, final model
 
 **Seed-averaged ensemble**:
@@ -61,11 +61,11 @@ The winner refit with several random seeds, with predicted probabilities average
 _Avoid_: Ensemble, bagging, stacking
 
 **Screening threshold**:
-The probability cutoff that turns a predicted risk into a referral decision, chosen to meet a target sensitivity and stored with the deployed model. The deployed model stores one cutoff per age band so the same sensitivity target is met across the age gradient.
+The probability cutoff that turns a predicted risk into a risk band for the user. The deployed model stores one cutoff per age band so the band means the same thing across the age gradient.
 _Avoid_: Cutoff, decision boundary, operating point
 
 **Age-band threshold**:
-The referral cutoff used inside one age band. It is chosen on out-of-fold predictions to meet the sensitivity target for that band, and it replaces a single global cutoff that would miss most young cases and refer almost every older adult.
+The risk-band cutoff used inside one age band. It is chosen on out-of-fold predictions for that band, and it replaces a single global cutoff that would miss most young cases and flag almost every older adult.
 _Avoid_: Subgroup threshold, stratified cutoff
 
 **Feature bundle**:
@@ -75,9 +75,9 @@ _Avoid_: Feature subset, reduced model
 ### Product
 
 **Screener app**:
-The web surface a health worker uses: the questionnaire, result, model transparency, and about pages, plus the API behind them. The app consumes the deployed model; it does not train or choose one.
+The web surface an individual uses: the questionnaire, result, model transparency, and about pages, plus the API behind them. The app consumes the deployed model; it does not train or choose one.
 _Avoid_: App, UI, frontend, demo
 
-**Referral decision**:
-The app's output of low, moderate, or high risk derived from the calibrated probability and the screening threshold. It is guidance to seek a blood test, never a diagnosis.
-_Avoid_: Diagnosis, prediction, classification
+**Risk band**:
+The app's output of lower, moderate, or higher risk derived from the calibrated probability and the band cut-offs. It is guidance on what to do next, never a diagnosis and never a guarantee that a blood test is available.
+_Avoid_: Referral, diagnosis, prediction, classification

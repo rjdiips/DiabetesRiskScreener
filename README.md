@@ -6,14 +6,18 @@ A research and portfolio project that estimates the probability of elevated rand
 
 ## What this is
 
-- An India-specific risk screener built on NFHS-5.
+- A self-service web risk assessment for individuals, built on NFHS-5.
 - A calibrated model with household-grouped validation.
+- Self-reported height, weight, and waist; blood pressure is optional.
+- A lower / moderate / higher risk band with plain-language next steps, not a referral.
 - A FastAPI service and web demo.
 - A calibration, subgroup, and fairness report.
 
 ## What this is not
 
 - Not a diagnostic test.
+- Not a substitute for a blood glucose test.
+- Not a health-worker or clinic workflow.
 - Not a predictor of future diabetes.
 - Not for insurance, employment, or care-allocation decisions.
 
@@ -147,7 +151,7 @@ python scripts/run_pr_model.py --sample 15plus --output artifacts/pr/runs
 python scripts/run_pr_model.py --sample 15-49 --output artifacts/pr/runs
 ```
 
-This is a thin wrapper around the shared `run_training_pipeline`; there is no second modeling implementation. The 15+ run uses the BP-valid sample of 1,805,697 adults (253,091 positives), the 12-feature default set (`female`, `age`, `urban`, `wealth`, `education`, `tobacco_any`, `alcohol_any`, `systolic_mean`, `diastolic_mean`, `bp_readings`, `bp_high`, `bp_medication`), and the saved PR split assignment. Calibration and the screening threshold are fitted independently on PR out-of-fold predictions.
+This is a thin wrapper around the shared `run_training_pipeline`; there is no second modeling implementation. The 15+ run uses the BP-valid sample of 1,805,697 adults (253,091 positives), the 12-feature default set (`female`, `age`, `urban`, `wealth`, `education`, `tobacco_any`, `alcohol_any`, `systolic_mean`, `diastolic_mean`, `bp_readings`, `bp_high`, `bp_medication`), and the saved PR split assignment. Calibration and the operating cut-offs are fitted independently on PR out-of-fold predictions.
 
 The `15-49` run is the age-matched comparison. It uses the feature builder's `age_15_49` flag as its sample filter, narrows the reported age bands to 15–24 … 45–49, and otherwise reuses the 15+ config: same feature set, same saved cluster partition filtered to 15–49 rows (no re-splitting), and its own calibration and threshold fitted on 15–49 out-of-fold predictions. The BP-valid 15–49 sample reconciles to 1,290,219 rows and 112,898 positives, and its run metadata and results report record `sample: age_15_49` and `comparison_run: pr_15plus_bp` so the two runs cannot be confused. `--no-split-assignment` is rejected for this sample, because a fresh partition would confound the comparison.
 

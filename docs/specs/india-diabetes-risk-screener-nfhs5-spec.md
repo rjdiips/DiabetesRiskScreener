@@ -8,16 +8,19 @@
 
 ---
 
-## 0. Scope amendment (1 November 2026)
+## 0. Scope amendment (13 November 2026)
 
 Model selection and launch scope follow `.scratch/model-shortlist/spec.md`. This section supersedes any conflicting text below.
 
+- **Self-service product.** The launch surface is a self-service web app used by an individual on their own phone. There is no ASHA/ANM/clinic workflow, no referral queue, and no assumed access to a blood glucose test. The app gives a risk band, a plain-language explanation, and next steps the user can take; it never tells the user they have diabetes.
+- **Measurement model is the default.** Height, weight, and waist are self-reported from household scales and tape measures, which are commonly available. Blood pressure is optional where the user has a reading. The questionnaire-only model is the fallback for users who cannot provide measurements, not the default.
+- **Operating point.** The app shows a user-facing risk band (lower / moderate / higher), not a binary referral. The band cut-offs are chosen to inform the user and are recorded with the frozen model; they are not sized to a health-worker referral capacity. Age-band cut-offs may be used so the bands mean the same thing across ages.
 - **Fixed shortlist.** The launch comparison is a prevalence-only reference plus seven scored candidates: logistic regression, spline logistic regression, random forest, LightGBM, XGBoost, CatBoost, and monotone-constrained LightGBM. The list is fixed before scoring; no candidate is added after results are seen.
 - **Ensemble scope.** The 5-fold × 10-seed ensemble applies only to the selected winner, and only when the winner is stochastic. It is not run for every candidate. A deterministic winner (logistic regression) is deployed as a single fitted model.
-- **Feature sets.** All seven families run on both the measurement feature set and the questionnaire-only feature set. The measurement pool selects the deployed model; questionnaire-only results are reported as the accessibility comparison and do not compete for deployment.
-- **Training and calibration.** All candidates train unweighted. Class weighting, SMOTE, and resampling are not used for selection. Calibration is fitted post hoc on out-of-fold predictions, and the screening threshold is chosen on out-of-fold predictions at ≥80% sensitivity.
+- **Feature sets.** All seven families run on both the measurement feature set and the questionnaire-only feature set. The measurement pool selects the deployed default; questionnaire-only results are the accessibility fallback for users without measurements and do not compete for the default deployment.
+- **Training and calibration.** All candidates train unweighted. Class weighting, SMOTE, and resampling are not used for selection. Calibration is fitted post hoc on out-of-fold predictions, and the operating cut-offs are chosen on out-of-fold predictions.
 - **Ranking.** PR-AUC ranks candidates, with calibration and subgroup gaps as vetoes. The held-out test set is evaluated once and is not used for ranking, calibration, or threshold selection.
-- **Age-band operating points.** The referral threshold is chosen inside each age band at the same sensitivity target, because one global cut-off cannot equalise sensitivity across a steep age gradient. The subgroup sensitivity-gap veto applies to sex, wealth, residence, education, and state at 0.15; age-band performance is reported at its own thresholds. This amends the first shortlist pass, which applied the gap veto to age bands at one global cut-off and found no eligible candidate.
+- **Age-band operating points.** The risk-band cut-offs are chosen inside each age band, because one global cut-off cannot mean the same thing across a steep age gradient. The subgroup sensitivity-gap veto applies to sex, wealth, residence, education, and state at 0.15; age-band performance is reported at its own thresholds. This amends the first shortlist pass, which applied the gap veto to age bands at one global cut-off and found no eligible candidate.
 - **Feature bundles.** The measurement set is ablated into the pre-registered `measurement_full`, `measurement_no_anthropometry`, `measurement_no_bp`, and `measurement_no_diet` bundles. A smaller bundle is deployed only when its winner is within 0.005 PR-AUC of, and no more than 0.005 Brier worse than, the best eligible bundle, with ties broken by fewer features.
 - **HbA1c sensitivity withdrawn.** The public NFHS-5 release exposes dried-blood-spot *eligibility* (`shdbs`, 6.3%) but no HbA1c values, and publishes no biomarker recode. The HbA1c sensitivity target in §13 is therefore not implementable from this data. The fact-sheet target remains the secondary outcome.
 - **PR sensitivity runs.** PR 15+ and PR 15–49 are rebuilt with the same recipe after the primary winner is frozen. Until then, the existing PR artifacts are the previous recipe and must not be quoted beside new primary numbers.
@@ -29,12 +32,12 @@ Model selection and launch scope follow `.scratch/model-shortlist/spec.md`. This
 
 **India Diabetes Risk Screener** is an India-specific, questionnaire-and-measurement app that estimates the probability of elevated blood glucose or diagnosed diabetes using data from the National Family Health Survey 2019–21 (NFHS-5).
 
-It is designed for low-resource primary care in India:
+It is designed for self-service use in India:
 
-- A short form that an ASHA/ANM worker can complete
-- Simple measurements: height, weight, waist circumference, blood pressure
-- A calibrated risk score with plain-language explanations
-- Referral guidance to the nearest Health & Wellness Centre
+- A short self-service form an individual can complete on a phone
+- Simple measurements taken at home: height, weight, and waist; blood pressure optional
+- A calibrated risk score and a lower / moderate / higher risk band
+- Plain-language next steps that do not assume a blood test is available or guaranteed
 - The full launch surface: screener, result, model transparency, about, and API
 - Fairness analysis across wealth, caste/tribe, religion, gender, and rural/urban groups
 
@@ -107,11 +110,11 @@ NFHS-5 is the strongest accessible India-specific dataset for this project.
 
 ### Product goals
 
-- Let an ASHA/ANM worker complete a short risk assessment in under three minutes.
-- Use only information available before a blood glucose test.
+- Let an individual complete a short risk assessment in under three minutes on a phone.
+- Use only information a person can provide about themselves, including common household measurements.
 - Return a calibrated probability of elevated blood glucose or diagnosed diabetes.
 - Show the top factors behind the estimate.
-- Give clear referral guidance, not a diagnosis.
+- Give clear, non-diagnostic guidance that does not assume access to a blood test.
 - Ship the full app experience as a responsive web app: screener, result, model transparency, and about.
 - Prioritise model accuracy over model size and offline constraints at launch.
 - Keep the form usable on low-end phones over a normal mobile connection.
@@ -163,22 +166,23 @@ NFHS-5 is the strongest accessible India-specific dataset for this project.
 
 ### Primary user
 
-**ASHA / ANM / community health worker**  
-Works at a Health & Wellness Centre or in a community setting. Needs a fast, low-literacy tool that helps decide who should be referred for a blood glucose test.
+**Individual adult in India**  
+Wants a private, questionnaire-based estimate on their own phone. May have a scale and a tape measure at home; may not have a blood-pressure cuff or easy access to a blood glucose test.
 
 ### Secondary users
 
-- **Self-service user** — wants a private, questionnaire-based estimate.
-- **PHC doctor or nurse** — wants a second signal and a clear referral note.
-- **District health officer** — wants aggregate risk and care-cascade views.
+- **Family member or caregiver** — completes the form for a relative and explains the result.
+- **Clinician** — receives a result the user chooses to share; not a workflow user of the app.
 - **Recruiter or reviewer** — wants to see model quality, fairness, and deployment quality.
 - **Data scientist** — wants to inspect target definition, calibration, and subgroup metrics.
 
 ### User stories
 
-- As an ASHA worker, I want to ask a short set of questions and get a risk score so I can prioritise referrals.
-- As an ASHA worker, I want the app to load quickly on a typical mobile connection so I can use it in the field.
-- As a user, I want to know that this is not a diagnosis and that I should get a blood test.
+- As an individual, I want a short set of questions and a risk band so I can understand my risk without a clinic visit.
+- As an individual on a low-end phone, I want the app to load quickly and work with a normal mobile connection.
+- As someone without a blood test nearby, I want to understand what the result means and what I can do next, not just be told to get a test.
+- As someone who does not know my blood pressure, I want to skip it without breaking the result.
+- As a user, I want to know that this is not a diagnosis.
 - As a reviewer, I want to see calibration and subgroup performance, not just accuracy.
 - As a developer, I want a documented API and a stable feature schema.
 
@@ -192,11 +196,11 @@ Works at a Health & Wellness Centre or in a community setting. Needs a fast, low
 |---|---|
 | ROC-AUC | Beat logistic-regression baseline |
 | PR-AUC | Beat baseline; report 95% CI |
-| Model selection | Highest validated ROC-AUC and PR-AUC among pre-registered candidates, with calibration and subgroup reporting as gates; no model-size or offline constraint |
+| Model selection | Pre-registered PR-AUC ranking with calibration and subgroup gates, plus the feature-bundle rule; no model-size or offline constraint |
 | Brier score | Lower than uncalibrated baseline |
 | Calibration | Reliability curve close to diagonal; report slope and intercept |
 | Sensitivity at 80% specificity | Report and compare to baseline |
-| Sensitivity at chosen threshold | ≥ 80% for the primary screening threshold |
+| Sensitivity at chosen band cut-offs | ≥ 80% where it produces a usable band; report the achieved sensitivity, flag rate, and trade-off |
 | Subgroup performance | Report by wealth, caste/tribe, religion, gender, rural/urban, state |
 | Household leakage | Zero household overlap between train and test |
 
@@ -434,7 +438,7 @@ Caste/tribe and religion are sensitive. Use them for **fairness auditing**, not 
 
 ### Core features: measurement model
 
-This is the primary model for ASHA/ANM use, because height, weight, waist, and BP can be measured at a Health & Wellness Centre.
+This is the default self-service model. Height, weight, and waist are commonly measured at home with a scale and a tape measure; blood pressure is optional where the user has a reading. Missing BP is handled by the model and flagged in the result.
 
 | Feature | Source | Type | Notes |
 |---|---|---|---|
@@ -460,7 +464,7 @@ This is the primary model for ASHA/ANM use, because height, weight, waist, and B
 
 ### Questionnaire-only model
 
-For self-service use, train a second model without measured BP, waist, or hip:
+For users who cannot provide measurements, train a fallback model without measured BP, waist, or hip:
 
 - Age, sex, height, weight, BMI
 - Education, wealth, rural/urban
@@ -602,12 +606,12 @@ Report:
 
 ### Model variants
 
-1. **Measurement model** — age, sex, BMI, waist, BP, socioeconomic, behaviors. Primary.
-2. **Questionnaire-only model** — no BP/waist; self-reported height/weight. Secondary.
+1. **Measurement model** — age, sex, BMI, waist, BP, socioeconomic, behaviors. Default self-service model.
+2. **Questionnaire-only model** — no BP/waist; self-reported height/weight. Fallback for users without measurements.
 3. **State model** — adds state/region. Local deployment comparison.
 4. **Fairness sensitivity model** — includes caste/tribe and religion for audit only.
 
-Report all four. The measurement model is the default launch model. The state model is a launch candidate only if it materially improves validated discrimination or calibration; any switch must be recorded with its subgroup and portability trade-offs. The questionnaire-only model remains a secondary accessibility option, and the fairness model remains audit-only.
+Report all four. The measurement model is the default launch model. The state model is a launch candidate only if it materially improves validated discrimination or calibration; any switch must be recorded with its subgroup and portability trade-offs. The questionnaire-only model remains the fallback access path, and the fairness model remains audit-only.
 
 ### Calibration
 
@@ -621,12 +625,13 @@ Report all four. The measurement model is the default launch model. The state mo
 
 ### Threshold selection
 
-- Choose a threshold based on referral capacity and a target sensitivity.
-- For screening, aim for **≥ 80% sensitivity** while maximising specificity.
-- Report the threshold, confusion matrix, sensitivity, specificity, PPV, and NPV.
-- Provide a configurable threshold for PHC referral capacity.
+- Choose risk-band cut-offs so the band means something useful to the user, starting from a sensitivity-first operating point and reporting the trade-off.
+- For a screening aid, aim for **≥ 80% sensitivity** where that produces a usable band; do not force it if it labels most users high risk.
+- Report the cut-offs, confusion matrix, sensitivity, specificity, PPV, and NPV.
+- Do not size the cut-offs to a health-worker referral queue; there is no referral queue.
 - Do not use 0.5 by default.
-- Show the threshold in the UI and model card.
+- Show the band cut-offs and what they mean in the UI and model card.
+- **Open decision (13 November 2026).** The first freeze used ≥80% sensitivity inside each age band. On the real data that flags about 75% of users as higher risk, which is too broad for a user-facing band. The final band split is a product decision and must be recorded before the public freeze. The candidates are a within-age fixed split (for example higher 20%, moderate 30%, lower 50%) or a two-tier “test now / recheck” policy. The model card must report the case capture and subgroup gaps for whichever policy is chosen.
 
 ---
 
@@ -771,7 +776,7 @@ Write a model card covering:
 
 ### Tagline
 
-> A short, India-specific risk assessment for elevated blood glucose, with referral guidance.
+> A short, India-specific self-assessment for elevated blood glucose, with plain-language next steps.
 
 ### Pages
 
@@ -780,8 +785,7 @@ Write a model card covering:
 - Short introduction and disclaimer.
 - Form grouped into sections:
   - About you
-  - Body measurements
-  - Blood pressure
+  - Body measurements (height, weight, waist; blood pressure optional)
   - Health behaviors
   - Household and social context
 - Progress indicator.
@@ -794,15 +798,16 @@ Write a model card covering:
 #### 2. Result
 
 - Risk percentage.
-- Risk band: low / moderate / high.
-- Threshold used.
+- Risk band: lower / moderate / higher.
+- Band cut-offs used.
 - Top 5 contributing factors.
 - “What this means” panel.
 - “What this does not mean” panel.
-- Referral guidance:
-  - High risk: “Please get a blood glucose test at the nearest Health & Wellness Centre.”
-  - Moderate risk: “Consider a blood glucose test, especially if you have symptoms or family history.”
-  - Low risk: “No action needed today. Maintain healthy habits and get tested if you develop symptoms.”
+- What you can do:
+  - Higher: “Consider getting a blood glucose test if you can access one, and discuss this result with a clinician. If you have symptoms such as excessive thirst, frequent urination, or unexplained weight loss, seek care sooner.”
+  - Moderate: “Consider a blood glucose test if you can access one, and keep an eye on changes. Maintaining a healthy weight and activity level can reduce risk.”
+  - Lower: “No action needed today. Maintain healthy habits and get tested if you develop symptoms or your risk factors change.”
+- A note that many people do not have easy access to a test, and what to do instead.
 - Model version.
 - Disclaimer.
 
@@ -821,7 +826,7 @@ Write a model card covering:
 - What it is not.
 - Privacy statement.
 - Data source and limitations.
-- NPCDCS and Health & Wellness Centre alignment.
+- How the result fits into routine care, without assuming a test is available.
 - Source code and dataset links.
 
 ### UX rules
@@ -834,13 +839,13 @@ Write a model card covering:
 - Do not require caste or religion.
 - Do not ask for information the model does not use.
 - Explain why sensitive fields are asked and allow “prefer not to answer.”
-- Provide a print/share referral note without storing PII.
+- Provide a shareable plain-language summary without storing PII.
 
 ### Example result copy
 
 > **Estimated probability: 22%**  
 > This means that, in the NFHS-5 survey data, about 22 in 100 adults with a similar profile had elevated random blood glucose or a reported diabetes diagnosis.  
-> This is not a diagnosis. Please get a blood glucose test at your nearest Health & Wellness Centre.  
+> This is not a diagnosis. If you can access a blood glucose test, consider getting one; it is also reasonable to discuss this result with a clinician. If you cannot access a test, focus on the risk factors you can change and seek care if you develop symptoms.  
 > The model does not predict whether you will develop diabetes in the future.
 
 ---
@@ -892,9 +897,9 @@ Response:
 ```json
 {
   "risk": 0.22,
-  "risk_band": "high",
+  "risk_band": "higher",
   "target": "elevated_random_blood_glucose_or_diagnosed_diabetes",
-  "threshold": 0.18,
+  "band_cutoffs": {"higher": 0.18, "moderate": 0.10},
   "top_factors": [
     {
       "feature": "Waist circumference",
@@ -909,7 +914,7 @@ Response:
       "direction": "increases"
     }
   ],
-  "referral": "Please get a blood glucose test at the nearest Health & Wellness Centre.",
+  "guidance": "Consider getting a blood glucose test if you can access one, and discuss this result with a clinician. This is not a diagnosis.",
   "model_version": "nfhs5-india-screener-v1",
   "disclaimer": "Research demo only. Not a diagnosis and not medical advice."
 }
@@ -1019,7 +1024,7 @@ Model artifacts
 ### Inference path
 
 - The browser sends the validated feature payload to `POST /api/predict`.
-- FastAPI returns the calibrated probability, threshold flag, risk band, top factors, referral copy, and model version.
+- FastAPI returns the calibrated probability, risk band, band cut-offs, top factors, guidance copy, and model version.
 - The frontend does not run a second model implementation; UI decisions and API decisions come from the same response.
 - If the API is unavailable, show a retry state. Do not invent or cache a risk score.
 
@@ -1152,7 +1157,7 @@ india-diabetes-risk-screener/
 ### Web app tests
 
 - Screener validates required fields and submits a prediction.
-- Result page renders risk, band, threshold, top factors, referral, and disclaimer.
+- Result page renders risk, band, band cut-offs, top factors, guidance, and disclaimer.
 - Model page renders metrics, calibration, subgroup table, and model version.
 - API-unavailable state shows a retry, not a fabricated score.
 
@@ -1217,7 +1222,7 @@ GitHub Actions should run:
 
 ### Disclaimer
 
-> This is a research and portfolio demo. It estimates the probability of elevated random blood glucose or a reported diabetes diagnosis based on NFHS-5 survey data. It is not a diagnostic test, does not predict future diabetes, and must not be used for medical decisions. Please consult a qualified health professional and get a blood glucose test if you have concerns.
+> This is a research and portfolio demo. It estimates the probability of elevated random blood glucose or a reported diabetes diagnosis based on NFHS-5 survey data. It is not a diagnostic test, does not predict future diabetes, and must not be used for medical decisions. Consider discussing this with a qualified health professional if you can, and get a blood glucose test if you have access. If you have symptoms, seek care.
 
 ---
 
@@ -1342,7 +1347,7 @@ Total launch scope: roughly **2–3 weeks part-time**.
 | Network dependency | App unavailable without connectivity | Clear retry/error state; defer offline-first PWA to post-launch |
 | Accuracy-first trade-off | Chasing accuracy can hurt calibration, fairness, or delay launch | Pre-register candidates; select on validation; gate on calibration and subgroup reporting; keep the test set untouched |
 | Scope creep | Project never ships | Ship the full measurement model + web app first; defer bilingual UI and offline PWA to post-launch |
-| Clinical misinterpretation | Harm | Explicit disclaimer; referral guidance; no diagnostic language |
+| Clinical misinterpretation | Harm | Explicit disclaimer; non-diagnostic guidance; no diagnostic language |
 | Data-use terms | Legal risk | Follow DHS agreement; no raw data sharing |
 | NFHS-6 not available | Outdated data | Use NFHS-5; add NFHS-6 validation when released |
 
@@ -1369,13 +1374,13 @@ Use real numbers after the evaluation is complete.
 
 > **India Diabetes Risk Screener** — Python, LightGBM, FastAPI, SHAP, React
 > - Built an India-specific diabetes risk screener on **1.25 million NFHS-5 adults with valid random glucose**, using household-grouped cross-validation and a **10-seed LightGBM ensemble**; improved PR-AUC from **0.XX to 0.YY** over logistic regression.
-> - Calibrated risk scores for a **≥80% sensitivity** screening threshold (Brier **0.XX**) and analysed fairness across wealth, caste/tribe, religion, gender, and rural/urban groups.
-> - Deployed a full-featured responsive web app and FastAPI service for ASHA/ANM workflows with **40+ tests**, CI, and a model card documenting random-glucose and cross-sectional limitations.
+> - Calibrated risk scores for **user-facing risk bands** and analysed fairness across wealth, caste/tribe, religion, gender, and rural/urban groups.
+> - Deployed a full-featured responsive web app and FastAPI service for self-service users with **40+ tests**, CI, and a model card documenting random-glucose and cross-sectional limitations.
 
 Alternative, shorter:
 
 > - Built and deployed an India-specific diabetes risk screener on **1.25M NFHS-5 adults with valid random glucose**, using a **10-seed LightGBM ensemble**, probability calibration, and SHAP explanations.
-> - Designed a responsive, accuracy-first web app for low-resource primary care; reported subgroup fairness and a district care-cascade analysis.
+> - Designed a responsive, accuracy-first web app for self-service use; reported subgroup fairness and a district care-cascade analysis.
 
 ---
 
@@ -1450,7 +1455,7 @@ The project is done when:
 
 1. The model is trained, calibrated, and evaluated on a household-grouped held-out test set.
 2. The target definition and exclusions are documented.
-3. Measurement, questionnaire-only, and state models are compared, and the highest-accuracy validated configuration is selected.
+3. Measurement, questionnaire-only, and state models are compared, and the pre-registered ranking and feature-bundle rule select the deployed configuration.
 4. The evaluation report, subgroup report, and model card are committed.
 5. The FastAPI service and responsive web app are deployed.
 6. `/docs`, `/health`, and `/api/predict` work.
